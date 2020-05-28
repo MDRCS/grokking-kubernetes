@@ -603,3 +603,49 @@
     $ http://192.168.64.8:30080/ front-end
 
 ![](./static/webapp-front.png)
+
+### + persistence | Storing data :
+
+    % upgarde of the system
+    Problem that we had is that positions of vehicles aren't beeing stored anywhere so when we
+    stop running the queue or deleting position tracker we will lose all the data.
+
+    # update all releases of microservices containers to release2
+    # just to unlock new feature of history tracker
+    $ kubectl apply -f .
+
+# new upgrade add mongodb database to store history of positions
+
+![](./static/upgarde.png)
+
+    # go to workloads.yml file and change richardchesterwood/k8s-fleetman-position-tracker:release2
+    to richardchesterwood/k8s-fleetman-position-tracker:release3
+
+    $ vi mongo-stack.yml -> put in it mongo image from docker and service to expose the db to other microservices (position-tracker precisely)
+    $ kubectl apply -f .
+
+    Congratulation you have, you did it
+
+    - But here we have another scenario that we should deal with.
+
+    - Problem 2 - if we delete the mongodb instance we will loose all our data
+
+    + Solution - Volume Persistence :
+
+        + startegy that we want to implement is that to store data outside the container, in a directory
+          in our host machine.
+
+    $ vi mongo-stack.yml
+      add -> volumeMounts:
+              - name: mongo-persistent-storage
+                mountPath: /data/db
+
+    # so now even if i destroy mongodb instance the data won't be lost.
+    $ kubectl delete pod mongodb-65784d9f9d-6wh7c
+    $ check http://192.168.64.8:30080/
+
+    # get Persistence Volume
+    $ kubectl get pv
+
+    # get Persistence Volume claims
+    $ kubectl get pvc
