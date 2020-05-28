@@ -579,3 +579,27 @@
     |Remove any config files with "rm -r ~/.kube" and "rm -r ~/.minikube". Or, delete these folders using your file explorer.
     |The folders are stored in your home directory, which under windows will be "c:\Users\<your username>"
     |Now restart minikube with "minikube start --memory 4096".
+
+### - Deploy Microservices Cluster Architecture :
+
+![](./static/archi.png)
+
+    # delete all
+    $ kubectl delete -f .
+
+![](./static/queue_ports.png)
+
+    $ cd /microservices_deployment
+    $ kubectl apply -f .
+
+    # we can check logs of a microservice
+    $ kubectl logs position-simulator-f48b877cb-s56ww
+    $ kubectl get all
+
+
+    # testing microservices
+    $ http://192.168.64.8:30010/admin/ ActiveMQ (login admin/admin)
+    $ http://192.168.64.8:30020/ api gatway
+    $ http://192.168.64.8:30080/ front-end
+
+![](./static/webapp-front.png)
