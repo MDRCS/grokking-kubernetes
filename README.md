@@ -499,3 +499,83 @@
     $ kubectl describe pod queue
     # go to 192.168.64.7:30010
 
+### + ReplicaSet
+
+    + ReplicaSet is a kind of wrapper for pods, that preserve pods from dying and not getting restart immediatly.
+    + because of pods are entities that could fail at any time ReplicaSet is a config that restart pods anytime they die.
+
+    ++ !! we can use pod or replicaset and not both for the same container.
+
+    $ kubectl delete pods --all
+    $ kubectl delete services --all
+
+    # Update changes of files
+    $ kubectl apply -f services.yml
+    $ kubectl apply -f pods-replicaset.yml
+
+    # now we will simulate pod crashing by deleting a pod
+    $ kubectl delete pod webapp-44pmd
+    $ kubectl get all
+    # you will see that a new pod has been created. Great !!
+
+### + Deployement
+
+    + Deployements are a more sophisticate ReplicaSet, ReplicaSet with one more feature that is rollback
+      if we got an error in our deployement and also Deployement Feature of Kubernetes help us manage ReplicaSet.
+
+
+    # delete ReplicaSet
+    $ kubectl delete rs webapp
+    $ comment `release: "0-5"` in services.yml
+    $ kubectl apply -f pods-deployement.yml
+    $ kubectl apply -f services.yml
+    $ kubectl get all
+
+    # option allows us to slowstarting pods by 30sec before they are ready.
+    - minReadySeconds: 30s
+
+    # Example - Rollback
+
+    # change version of docker container
+    from image: richardchesterwood/k8s-fleetman-webapp-angular:release0-5 to image: richardchesterwood/k8s-fleetman-webapp-angular:release0
+    $ kubectl apply -f pods-deployement.yml
+    $ check this url http://192.168.64.7:30080/
+
+    $ kubectl rollout history deploy webapp
+    $ kubectl rollout undo deploy webapp --to-revision=2
+
+
+### - Networking & Service Discovery in kubernetes :
+
+    + pods are entities that change ip addresses each time so the java app pod should each time figure out
+      what is the ip address of the mysqdb pod to communicate with, this is where Service Discovery come to solve this problem
+      and in the kubernetes cluster the `kube-dns` who do this job by saving ip addresses of all pods and services in the cluster.
+
+![](./static/service_discovery.png)
+
+
+### + namespaces :
+
+![](./static/namespaces.png)
+
+    $ kubectl get namespaces
+
+    - by default i'am in `default` namespace
+
+    # get pods that are in `kube-system` namespace
+    $ kubectl get pods -n kube-system
+    $ kubectl get all -n kube-system
+    $ kubectl describe svc kube-dns -n kube-system
+
+
+### - Upgrade RAM use for Minikube :
+
+    + I recommend before starting this section that you set up minikube with plenty of RAM. To do this:
+
+    $ allocate 4GB of RAM for munikube.
+
+    |Stop minikube with "minikube stop"
+    |Delete your existing minikube with "minikube delete"
+    |Remove any config files with "rm -r ~/.kube" and "rm -r ~/.minikube". Or, delete these folders using your file explorer.
+    |The folders are stored in your home directory, which under windows will be "c:\Users\<your username>"
+    |Now restart minikube with "minikube start --memory 4096".
