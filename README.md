@@ -348,9 +348,138 @@
         redis-slave    ClusterIP      10.100.116.29   <none>        6379/TCP         26s
 
 
-    $ browser enter -> 10.100.88.98:3000
+    $ browser enter -> https://10.100.88.98:3000
 
     # add ana alias
     $ vi ~/.bashrc
     $ alias k=kubectl
     4 source ~/.bashrc
+
++ INTRODUCING PODS
+
+![](./static/pods.png)
+
+    You may be wondering if you can see your container in a list showing all the running containers.
+    Maybe something such as kubectl get containers? Well, that’s not exactly how Kubernetes works.
+    It doesn’t deal with individual containers directly. Instead, it uses the concept of multiple
+    co-located containers. This group of containers is called a Pod.
+    A pod is a group of one or more tightly related containers that will always run together on
+    the same worker node and in the same Linux namespace(s). Each pod is like a separate logical
+    machine with its own IP, hostname, processes, and so on, running a single application.
+    The application can be a single process, running in a single container, or it can be a main
+    application process and additional supporting processes, each running in its own container.
+    All the containers in a pod will appear to be running on the same logical machine, whereas containers
+    in other pods, even if they’re running on the same worker node, will appear to be running on a differ- ent one.
+
+    LISTING PODS
+    Because you can’t list individual containers, since they’re not standalone Kubernetes objects,
+    can you list pods instead? Yes, you can. Let’s see how to tell kubectl to list pods in the following listing.
+
+    $ kubectl get pods
+
+
+### + Hands-on Kubernetes | deploying real microservices :
+
+    $ cd /simple-app
+    $ vi first-pod.yml
+    # write you first pod to deploy front-end container deployed previously on dockerhub.
+    $ kubectl get all
+
+    # deploy container to k8 cluster :
+    $ kubectl apply -f first-pod.yml
+        pod/webapp created
+
+    $ kubectl get all
+    $ minikube ip
+        192.168.64.7
+
+    # but pods are not reachable outside the cluster.
+
+    # get infos about pod, logs ..
+    $ kubectl describe pod webapp
+
+    # execute commands against the pod
+    $ kubectl exec webapp ls
+
+    # get inside pod
+    $ kubectl -it exec webapp sh
+    $ wget http://localhost:80
+    $ cat index.html
+
+    # and now we can access application file index.html because we are inside the container.
+
++ Introduction to Services
+
+![](./static/service.png)
+
+    - Services have IP addresses and could connect to pods thought key:value labels.
+    - we could considere services as reverse-proxies (or network endpoint | load balancer if we have too many pods in a cluster) because it allows pods to be exposed to users easily.
+
+### + Services Types :
+
+![](./static/service_configs.png)
+
+    Kubernetes ServiceTypes allow you to specify what kind of Service you want. The default is ClusterIP.
+
+    Type values and their behaviors are:
+
+        + ClusterIP: Exposes the Service on a cluster-internal IP. Choosing this value makes the Service only reachable from within the cluster. This is the default ServiceType.
+
+        + NodePort: Exposes the Service on each Node’s IP at a static port (the NodePort). A ClusterIP Service, to which the NodePort Service routes, is automatically created. You’ll be able to contact the NodePort Service, from outside the cluster, by requesting <NodeIP>:<NodePort>.
+
+        + LoadBalancer: Exposes the Service externally using a cloud provider’s load balancer. NodePort and ClusterIP Services, to which the external load balancer routes, are automatically created.
+
+        + ExternalName: Maps the Service to the contents of the externalName field (e.g. foo.bar.example.com), by returning a CNAME record
+          with its value. No proxying of any kind is set up.
+
+![](./static/nodeport_service.png)
+
+    $ kubectl apply -f webapp-service.yml
+    $ kubectl get all
+    # test this one -> 10.103.151.47:30080
+    $ minikube ip
+    # test this one -> 192.168.64.7:30080
+
+    !!! don't forget o add `labels:
+                               app: webapp` as a label in the pod file
+    and `app: webapp` as a selector in the service file.
+
+    # Update changes of files
+    $ kubectl apply -f webapp-service.yml
+    $ kubectl apply -f first-pod.yml
+
+    # Configure External Ip address :
+    $ minikube ip
+        192.168.64.7
+    $ kubectl patch svc fleetman-webapp  -p '{"spec": {"type": "LoadBalancer", "externalIPs":["192.168.64.7"]}}'
+    $ curl 192.168.64.7:30080
+
+    # Other commands :
+    kubectl describe svc kubernetes
+    kubectl describe services fleetman-webapp
+
+    # problem - imagine we have a new release and we want to change the pod with another version with `Zero downtime` :
+
+    - Solution is to add `release` label to the `selector` in the `service` so if we change realease from 0 to 1 for examaple
+      the selector will point directly to the new pod and after that we could delete the old one.
+
+![](./static/release.png)
+![](./static/release1.png)
+
+
+    # Update changes of files
+    $ kubectl apply -f webapp-service.yml
+    $ kubectl apply -f first-pod.yml
+
+    $ kubectl get all
+    $ kubectl describe service fleetman-webapp
+        Annotations:  Selector:  app=webapp,release=0-5
+
+    # if the browser keep give you the cache try to clear cache. and reaload.
+
+    # get pods with labels
+    $ kubectl get pods --show-labels
+
+    # select pods by labels
+    $ kubectl get pods --show-labels -l release=0
+
