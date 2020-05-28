@@ -381,12 +381,12 @@
 ### + Hands-on Kubernetes | deploying real microservices :
 
     $ cd /simple-app
-    $ vi first-pod.yml
+    $ vi pods.yml
     # write you first pod to deploy front-end container deployed previously on dockerhub.
     $ kubectl get all
 
     # deploy container to k8 cluster :
-    $ kubectl apply -f first-pod.yml
+    $ kubectl apply -f pods.yml
         pod/webapp created
 
     $ kubectl get all
@@ -434,7 +434,7 @@
 
 ![](./static/nodeport_service.png)
 
-    $ kubectl apply -f webapp-service.yml
+    $ kubectl apply -f services.yml
     $ kubectl get all
     # test this one -> 10.103.151.47:30080
     $ minikube ip
@@ -445,8 +445,8 @@
     and `app: webapp` as a selector in the service file.
 
     # Update changes of files
-    $ kubectl apply -f webapp-service.yml
-    $ kubectl apply -f first-pod.yml
+    $ kubectl apply -f services.yml
+    $ kubectl apply -f pods.yml
 
     # Configure External Ip address :
     $ minikube ip
@@ -468,12 +468,12 @@
 
 
     # Update changes of files
-    $ kubectl apply -f webapp-service.yml
-    $ kubectl apply -f first-pod.yml
+    $ kubectl apply -f services.yml
+    $ kubectl apply -f pods.yml
 
     $ kubectl get all
     $ kubectl describe service fleetman-webapp
-        Annotations:  Selector:  app=webapp,release=0-5
+        Annotations:  Selector: app=webapp,release=0-5
 
     # if the browser keep give you the cache try to clear cache. and reaload.
 
@@ -482,4 +482,20 @@
 
     # select pods by labels
     $ kubectl get pods --show-labels -l release=0
+
+### + Deploying Message Queue - Apache ActiveMQ
+
+    # Update changes of files
+    $ kubectl apply -f services.yml
+    $ kubectl apply -f pods.yml
+
+    # Configure External Ip address for :
+
+    $ minikube ip
+        192.168.64.7
+    $ kubectl patch svc fleetman-queue  -p '{"spec": {"type": "LoadBalancer", "externalIPs":["192.168.64.7"]}}'
+    $ kubectl get all
+    # check if it started successfully
+    $ kubectl describe pod queue
+    # go to 192.168.64.7:30010
 
