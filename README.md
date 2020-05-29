@@ -979,3 +979,29 @@
     - enter in the browser -> http://fleetman.pydevops.ml/
 
     ++ Congratulation !!
+
+### + Now All Things are deployed, lets try to break the system to test resistence, resiliency and High-Availibality of the system :
+
+    $ kubectl get pods -o wide
+    # the node to delete where the webapp front-end app is hosted.
+      webapp-785d5b86bf-tvzx2               1/1     Running   0          82m    100.96.3.4   ip-172-20-136-157.ec2.internal   <none>           <none>
+
+    # node to delete -> ip-172-20-136-157.ec2.internal
+
+    # go to the console of ec2 and delete this node.
+
+    - Result :
+    + the system was stopping for a while and the node get restarted but it took time to get live.
+
+    ++ To solve this problem we should run two pods of the webapp image.
+    $ vi workloads.yml
+    # change webapp replicas from 1 to 2.
+    $ kubectl apply -f workloads.yml
+
+    # now we have two pods for webapp container
+    $ kubectl get pods -o wide
+
+    # node to delete -> ip-172-20-91-248.ec2.internal
+
+    - !! Great, we broke the system by deleting the node and guess what there was no downtime.
+
