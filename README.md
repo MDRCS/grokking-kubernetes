@@ -958,4 +958,24 @@
 
     $ a2080664210b14eb786c418b9f2324fc-1709756137.us-east-1.elb.amazonaws.com
 
+### - Setting up a registration domain name - Route53 dns:
 
+    + setup a domain name :
+    - go to freenom, get a domain name `pydevops.ml`
+    - go to aws, Route53 craete hosted zone
+    - put in domain name that you have created
+    - copy NS or nameservers
+
+        ns-994.awsdns-60.net.
+        ns-1607.awsdns-08.co.uk.
+        ns-1376.awsdns-44.org.
+        ns-300.awsdns-37.com.
+
+    - go to freenom -> management tools -> nameservers
+    - paste them
+    - go to aws Route53 -> create a recordset name -> fleetman.pydevops.ml
+    - enable `alias` -> choose the second loadbalancer that you have created
+    - click create
+    - enter in the browser -> http://fleetman.pydevops.ml/
+
+    ++ Congratulation !!
