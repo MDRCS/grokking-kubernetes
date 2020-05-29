@@ -649,3 +649,313 @@
 
     # get Persistence Volume claims
     $ kubectl get pvc
+
+### - Deployement of K8 Microservices Cluster on AWS :
+
++  From Minikube to EC2 instances
+
+![](./static/minikube.png)
+
+![](./static/AWS_NODES.png)
+
+- for Volume Persistence we are going to use EBS Elastic block store in AWS :
+
+![](./static/ebs.png)
+
+    ++ setting up kubernetes cluster in a production environement
+
+    - we are not going to procede manually.
+    - we are going to use a tool called KOPS stand for kuberenetes operations :
+      https://github.com/kubernetes/kops
+
+    - tutorial + https://kops.sigs.k8s.io/getting_started/aws/
+
+    - getting started :
+
+    1- create ec2 instance
+    2- connect -> ssh -i swarm-cluster.pem ec2-user@100.25.164.188
+
+    # install kops on ec2 instance :
+    3- curl -LO https://github.com/kubernetes/kops/releases/download/$(curl -s https://api.github.com/repos/kubernetes/kops/releases/latest | grep tag_name | cut -d '"' -f 4)/kops-linux-amd64
+    4- chmod +x kops-linux-amd64
+    5- sudo mv kops-linux-amd64 /usr/local/bin/kops
+
+    # prerequisite - install kubernetes :
+      https://kubernetes.io/docs/tasks/tools/install-kubectl/
+
+    6- curl -LO https://storage.googleapis.com/kubernetes-release/release/`curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt`/bin/linux/amd64/kubectl
+    7- chmod +x ./kubectl
+    8- sudo mv ./kubectl /usr/local/bin/kubectl
+    9- kubectl version --client
+
+    # next, we should create an IAM user with a certains permissions :
+    10- create a new group call it `kops`
+    11- select this permissions :
+        AmazonEC2FullAccess
+        AmazonRoute53FullAccess
+        AmazonS3FullAccess
+        IAMFullAccess
+        AmazonVPCFullAccess
+
+    12- now go to users, and create a new user name it `kops`
+        select this option -> Programmatic access
+    13- then add users group click on `kops`.
+        access id -> AKIAV2BJVZP67UMAEZIT
+
+    # login new IAM user.
+    14- aws configure
+
+    # check users IAM in my account
+    15- aws iam list-users
+    16- # Because "aws configure" doesn't export these vars for kops to use, we export them now
+        export AWS_ACCESS_KEY_ID=$(aws configure get aws_access_key_id)
+        export AWS_SECRET_ACCESS_KEY=$(aws configure get aws_secret_access_key)
+
+        export AWS_ACCESS_KEY_ID=AKIAV2BJVZP67UMAEZIT
+        export AWS_SECRET_ACCESS_KEY=<copy secret key from csv file you downloaded>
+
+
+    + Setting up a S3 bucket :
+    # go to the console of S3 and create a bucket name it `microservices-state-storage`.
+    # you can use encryption config if you work in professional environement.
+
+    # setup this env variables :
+    export NAME=fleetman.k8s.local
+    export KOPS_STATE_STORE=s3://microservices-state-storage
+
+
+    + Create cluster config :
+    % create availibality zone
+    $ aws ec2 describe-availability-zones --region us-east-1
+      {
+            "AvailabilityZones": [
+                {
+                    "OptInStatus": "opt-in-not-required",
+                    "Messages": [],
+                    "ZoneId": "use1-az6",
+                    "GroupName": "us-east-1",
+                    "State": "available",
+                    "NetworkBorderGroup": "us-east-1",
+                    "ZoneName": "us-east-1a",
+                    "RegionName": "us-east-1"
+                },
+                {
+                    "OptInStatus": "opt-in-not-required",
+                    "Messages": [],
+                    "ZoneId": "use1-az1",
+                    "GroupName": "us-east-1",
+                    "State": "available",
+                    "NetworkBorderGroup": "us-east-1",
+                    "ZoneName": "us-east-1b",
+                    "RegionName": "us-east-1"
+                },
+                {
+                    "OptInStatus": "opt-in-not-required",
+                    "Messages": [],
+                    "ZoneId": "use1-az2",
+                    "GroupName": "us-east-1",
+                    "State": "available",
+                    "NetworkBorderGroup": "us-east-1",
+                    "ZoneName": "us-east-1c",
+                    "RegionName": "us-east-1"
+                },
+                {
+                    "OptInStatus": "opt-in-not-required",
+                    "Messages": [],
+                    "ZoneId": "use1-az4",
+                    "GroupName": "us-east-1",
+                    "State": "available",
+                    "NetworkBorderGroup": "us-east-1",
+                    "ZoneName": "us-east-1d",
+                    "RegionName": "us-east-1"
+                },
+                {
+                    "OptInStatus": "opt-in-not-required",
+                    "Messages": [],
+                    "ZoneId": "use1-az3",
+                    "GroupName": "us-east-1",
+                    "State": "available",
+                    "NetworkBorderGroup": "us-east-1",
+                    "ZoneName": "us-east-1e",
+                    "RegionName": "us-east-1"
+                },
+                {
+                    "OptInStatus": "opt-in-not-required",
+                    "Messages": [],
+                    "ZoneId": "use1-az5",
+                    "GroupName": "us-east-1",
+                    "State": "available",
+                    "NetworkBorderGroup": "us-east-1",
+                    "ZoneName": "us-east-1f",
+                    "RegionName": "us-east-1"
+                }
+            ]
+        }
+
+    % create zones availibality
+    $ kops create cluster --zones=us-east-1a,us-east-1b,us-east-1c,us-east-1d,us-east-1e,us-east-1f ${NAME}
+
+    % specify an ssh key
+    $ ssh-keygen -b 2048 -t rsa -f ~/.ssh/id_rsa
+      passphrase ->  hello
+
+    $ kops create secret --name ${NAME} sshpublickey admin -i ~/.ssh/id_rsa.pub
+
+    % Customize Cluster Configuration
+    # setup EDITOR ENV VARIABLE
+    $ export EDITOR=vi
+    $ kops edit cluster ${NAME}
+
+    $ kops edit ig nodes --name ${NAME}
+        spec:
+          image: kope.io/k8s-1.16-debian-stretch-amd64-hvm-ebs-2020-01-17
+          machineType: t2.medium
+          maxSize: 2 -> 5
+          minSize: 2 -> 3
+
+    # we change how many instances we want for this clusters.
+
+    # check nodes configured in the cluster.
+    $ kops get ig nodes --name ${NAME}
+
+    # check all the cluster
+    $ kops get ig --name ${NAME}
+
+    # to change something in a node (master/slave)
+    $ kops edit ig master-us-east-1a --name ${NAME}
+
+    -> if you want this example to not cost you money change machinetype to t2.micro.
+
+    # build cluster provision machines
+    $ kops update cluster ${NAME} --yes
+
+    # to check if our cluster is live our not
+    $ kops validate cluster
+
+
+    # display nodes created
+    $ kubectl get nodes --show-labels
+
+### + Architecture Overview :
+
+![](./static/wc-kube-aws-flat.png)
+
+    + using a load balancer just if the master crashes,
+      and get restarted the loadbalancer will point to
+      the new one and save the high availibility of the system.
+
+    ++ if any node crash aws will recreate a new one link it to the load balancer immediatly.
+
+
+    %% Getting Started creating files that wrap our docker containers.
+
+    # persistence volume for mongodb
+    $ nano storage-aws.yml
+      Copy in it ./microservices_deployment/storage-aws.yml
+    $ kubectl apply -f storage-aws.yml
+
+    # check for the volume that we created
+    $ kubectl get pv
+
+
+    # mongo docker image
+    $ nano mongo-stack.yml
+     Copy in it ./microservices_deployment/mongo-stack.yml
+     cmd + X to save file
+
+    $ kubectl apply -f mongo-stack.yml
+    $ kubectl get all
+
+    $ kubectl describe pod mongodb-7dc4596644-hrmxj
+      -> Normal  SuccessfulAttachVolume  113s  attachdetach-controller                  AttachVolume.Attach succeeded for volume "pvc-75a09f5d-758b-4767-be37-1df9c8ad115a"
+      - this line told us about mongodb database has been attanched to volume block store.
+
+    # check logs of mongodb container
+    $ kubectl logs -f pod/mongodb-7dc4596644-hrmxj
+
+    # docker images of microservices architecture
+    $ nano workloads.yml
+     Copy in it ./microservices_deployment/workloads.yml
+     cmd + X to save file
+
+    $ nano services.yml
+     Copy in it ./microservices_deployment/services.yml
+     # Make a little changes (LoadBalancer option we could use it just in prod cloud environment that support loadbalancers and NodePort for testing and developement env)
+     # for fleetman-webapp
+     -> From
+
+         ports:
+            - name: http
+              port: 80
+              nodePort: 30080
+
+        type: NodePort
+    -> To
+
+        ports:
+            - name: http
+              port: 80
+
+        type: LoadBalancer
+
+    # for fleetman-queue
+     -> From
+
+         ports:
+        - name: http
+          port: 8161
+          nodePort: 30010
+
+        - name: endpoint
+          port: 61616
+
+        type: NodePort
+
+    -> To
+
+         ports:
+            - name: http
+              port: 8161
+
+            - name: endpoint
+              port: 61616
+
+        type: ClusterIP
+
+    # for fleetman-api-gateway
+
+    -> From :
+
+        ports:
+            - name: http
+              port: 8080
+              nodePort: 30020
+
+        type: NodePort
+
+    -> To :
+
+        ports:
+            - name: http
+              port: 8080
+
+        type: ClusterIP
+
+    cmd + X to save file
+
+    $ kubectl apply -f .
+    $ kubectl get all
+
+    # check logs
+    $ kubectl logs -f pod/position-tracker-65cff5b766-x4hsp
+    2020-05-29 20:27:36.439  INFO 1 --- [           main] org.mongodb.driver.cluster               : Adding discovered server fleetman-mongodb.default.svc.cluster.local:27017 to client view of cluster
+    # we can see that position-tracker microservice made a connection to the database mongodb.
+
+    # To test the application in a live mode
+    # go to loadbalancers
+    # you will find two one you defined previousely and one it has been generated automatically
+    # go to the second one -> check dns name Record A
+
+    $ a2080664210b14eb786c418b9f2324fc-1709756137.us-east-1.elb.amazonaws.com
+
+
