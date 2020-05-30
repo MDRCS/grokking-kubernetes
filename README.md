@@ -1005,3 +1005,68 @@
 
     - !! Great, we broke the system by deleting the node and guess what there was no downtime.
 
+    ++ to delete the cluster
+    4 kubectl delete cluster --name ${NAME} --yes
+
+
+#### + setting up ELK Stack for logging and Anaytics :
+
+![](./static/elk.png)
+
+---------------------
+
+![](./static/elk-k8-cluster.png)
+
+    + setting up ELK stack :
+
+     here is the files that you will need them to configure elasticsearch, logstach | fluentd and kibana :
+     -> https://github.com/kubernetes/kubernetes/tree/master/cluster/addons/fluentd-elasticsearch
+
+    + What is DeamonSet
+    - a deamonset is like replicatset but we don't define how many replica we are going to run, automatically
+      the configuration will launch a pod for every node.
+
+    + What is StatefulSet
+    - is another kind of ReplicaSet what is diffrent is that StatefulSet give pods names like
+        name: elasticsearch-logging-1
+              elasticsearch-logging-2
+              etc ..
+
+    + we suppose that name of container is `name: elasticsearch-logging`
+
+
+    1- nano fluentd-config.yml
+       Copy ./microservices_deployement/aws/fluentd-config.yml paste.
+    $ kubectl apply -f fluentd-config.yml
+
+    2- nano elastic-stack.yml
+       Copy ./microservices_deployement/aws/elastic-stack.yml paste.
+
+    $ kubectl apply -f elastic-stack.yml
+
+    # new elk pods are not in the default namespace so you won't see them here.
+    $ kubectl get all
+
+    # kubectl get po -n kube-system
+
+    # get services of elk stack
+    $ kubectl get svc -n kube-system
+
+    # get info about front-end kibana systen
+    $ kubectl describe service kibana-logging -n kube-system
+    $ aebf65e23a9d94cc19c780a8a863a79b-1977097947.us-east-1.elb.amazonaws.com:32233
+
+    abe29003e04eb420d9c0d0cfed108d52-1239844185.us-east-1.elb.amazonaws.com:32251
+    kubectl logs -f elasticsearch-logging-0 -n kube-system
+
+
+    kubectl logs -f elasticsearch-logging-0 -n kube-system
+
+    kubectl describe svc kibana-logging -n kube-system
+
+![](./static/efk.png)
+
+
+    - next, create an index pattern
+    - name it, logstash*
+    - next, select timestamps !!
