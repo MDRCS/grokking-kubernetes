@@ -82,7 +82,10 @@ spec:
         env:
         - name: SPRING_PROFILES_ACTIVE
           value: production-microservice
-
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
 ---
 
 apiVersion: apps/v1

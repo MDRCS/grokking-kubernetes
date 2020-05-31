@@ -1267,3 +1267,50 @@
     $ kubectl appy -f autoscaling-rules.yml
 
     - hpa could trigger scaledown also. change takes a few minutes for the transition.
+
+    NOTE : Stateless pods are easier to scale than Stateful pods, pods that share data
+           like databses are very hard to scale and you should look at the documnetation
+           of a each specific database to see how scalability works.
+
+### + Readiness and Liveness Problems
+
+![](./static/new_pods.png)
+
+    - when kubernetes detect that there is a need to add more replicas (HPA), it will create this new pods
+      then immediatly after pod change it status to running the service linked to this pods will start redirecting
+      request to this pod but the problem is each application have starting time to be ready depends on the programming
+      langage used to develope this app.
+
+    - For example java apps take around 20 to 30o sec to start.
+
+    + Solution :
+    - not sending a request until the time set for readiness in the yaml file be complete.
+
+    * https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/
+
+    - Add this lines to the pod description in yaml file:
+            readinessProbe:
+                httpGet:
+                    path: /
+                    port: 8080
+
+    + to test the change :
+
+    1- kubectl apply -f workloads.yml # with 1 replica without `readinessProbe`
+    2- update replicas by scaling pods running kubectl apply -f autoscaling-rule.yml
+    3- go to another terminal execute `while true; do curl http://192.168.64.9:30080/; echo; done`
+
+    # without `readiness` you will observe that some request fail because app inside pod are not yet ready
+      but pod is ready
+
+    4- add readiness, and repeat the same steps you won't have this problem.
+         readinessProbe:
+                httpGet:
+                    path: /
+                    port: 8080
+
+
+    -> for liveness prob is concept to kill a pod after 3 failure (restart it), you can look at documnetation
+       to see how to configure liveness.
+
+    * https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/
