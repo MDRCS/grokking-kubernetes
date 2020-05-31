@@ -1180,3 +1180,13 @@
          group -> inbound -> update cutom tcp rule -> change lowerbound from 4003 to 4001.
 
 ![](./static/resolved-alerts.png)
+
+### + Resources Allocation :
+
+    # check resources of k8 cluster (localy)
+    $ kubectl describe node minikube
+
+    # imagine if we have a minikube vm of 4 gb memory so the limit of a 4 replicas webapp pod is 1000Mi.
+    # if we add another one the launch will fail.
+
+

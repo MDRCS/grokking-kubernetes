@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: queue
+spec:
+  selector:
+    matchLabels:
+      app: queue
+  replicas: 2
+  template: # template for the pods
+    metadata:
+      labels:
+        app: queue
+    spec:
+      containers:
+      - name: queue
+        image: richardchesterwood/k8s-fleetman-queue:release2
+        resources:
+          requests:
+            memory:  300Mi
+            cpu: 100m
+          limits:
+            memory:  500Mi
+            cpu: 200m
+
+# if a pod bypass the limit of memory it will be killed.
+# and for cpu is will be clamped. and container will still running.
+# cgroup is the feature that allows containers to limit resources and it started with linux.
