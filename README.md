@@ -1071,6 +1071,8 @@
 
 ### + Monitoring a CLUSTER (Grafana & Prometheus) :
 
+![](./static/architecture-mrcv.png)
+
     - Easiest way to install Grafana & Prometheus in kubernetes is using Helm a package manager for k8.
       https://github.com/helm/helm
 
@@ -1216,3 +1218,52 @@
 
     $ kubectl apply -f workloads.yml
     $ kubectl top pod
+
+
+### + Horizontal Scaling and Componenet Replication :
+
+    - First of all, before replicating any microservice or db we should ask the question
+      is this microservice repliccccable or not ?
+
+    - for example position-simulator is not replicable because if we replice it we will ge a weird
+      behaviour from the webapp, the two replca will have the same data there is no sharing
+      so you get the idea.
+
+    + Algorithm Details :
+
+        From the most basic perspective, the Horizontal Pod Autoscaler controller operates on the ratio between desired metric value and current metric value:
+
+        desiredReplicas = ceil[currentReplicas * ( currentMetricValue / desiredMetricValue )]
+        For example, if the current metric value is 200m, and the desired value is 100m, the number of replicas will be doubled, since 200.0 / 100.0 == 2.0 If the current value is instead 50m, we’ll halve the number of replicas, since 50.0 / 100.0 == 0.5. We’ll skip scaling if the ratio is sufficiently close to 1.0 (within a globally-configurable tolerance, from the --horizontal-pod-autoscaler-tolerance flag, which defaults to 0.1).
+
+    - the pod that is replicable is the position tracker because
+
+
+![](./static/pod-replica.png)
+![](./static/autoscaling-scenario.png)
+
+    + HPA Feature simply it allows us to define rules for scaling that mean if resources requested are consumed by 50%
+      we will apply the specified rules.
+
+    $ kubectl autoscale deployment api-gateway  --cpu-percent 400 --min 1 --max 4
+    $ kubectl get hpa
+
+    - ALternative 1 - use a yml file to define autoscaling rules:
+
+        apiVersion: apps/v1
+        kind: HorizontalPodAutoscaler
+        metadata:
+          name: api-gateway
+          namespace: default
+        spec:
+          maxReplicas: 4
+          minReplicas: 1
+          scaleTargetRef:
+            apiVersion: extensions/v1beta1
+            kind: Deployment
+            name: api-gateway
+          targetCPUUtilizationPercentage: 400
+
+    $ kubectl appy -f autoscaling-rules.yml
+
+    - hpa could trigger scaledown also. change takes a few minutes for the transition.
