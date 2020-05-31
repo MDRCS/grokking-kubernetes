@@ -1314,3 +1314,38 @@
        to see how to configure liveness.
 
     * https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/
+
+### + QoS (Quality od service & Eviction) :
+
+![](./static/QoS.png)
+
+    + This example illustrate how is important the definition of Memory and CPU Usage before deployment
+      what we call in the jargon `QoS: Guaranteed` that mean we make it for scheduler in k8 to put the pod
+      in the conveniant place.
+
+    + but for both the other two pods they make it hard for scheduler because for the second one we precise
+      requested memory usage but not the limit, and for the third we define nothing but for
+
+    - for scheduler if the first pod by pass the limit it will be evicted | scheduled in another pod.
+
+    ! Important : for scheduler the pod that get evicted first in node is the `QoS: BestEffort`
+                   because we could not predicte it usage. second is `Burstable` and last is `Guaranteed`
+                   but if first pod is bypassing the limit it will be ec=victed immediatly.
+
+    + to test we added to queue pod :
+
+        resources:
+            requests:
+                memory: 300Mi
+                cpu: 100m
+
+    $ kubectl apply -f workloads.yml
+    $ kubectl describe pod queue-7fc899cf8d-tjfdw
+        QoS Class:       Burstable
+        * because we added just requests and not limit also. to be QoS Guarented.
+
+    + we can set priorities for pod (but it not adviced) -> https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/
+
+    ++ !!! we can set high priority to queue pod because :
+    ++ for the queue if we kill the pod it will restart but all the data that was in it will be lost
+       so it's advisable to use hosted Queue lime Amazon ActiveMQ or Amazon SQS etc..
