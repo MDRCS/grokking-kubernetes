@@ -1189,4 +1189,30 @@
     # imagine if we have a minikube vm of 4 gb memory so the limit of a 4 replicas webapp pod is 1000Mi.
     # if we add another one the launch will fail.
 
+### + Profiling an applcation to estimate requests and limits for your pod:
 
+    $ minikube addons list
+    $ minikube addons enable metrics-server
+    $ kubectl top pod
+        NAME                                                     CPU(cores)   MEMORY(bytes)
+        alertmanager-monitoring-prometheus-oper-alertmanager-0   3m           19Mi
+        api-gateway-559c9c5f86-lf45l                             61m          494Mi
+        mongodb-65784d9f9d-x462r                                 332m         358Mi
+        monitoring-grafana-679fc986c4-5j5kw                      6m           86Mi
+        monitoring-kube-state-metrics-96f87d848-tnzc7            3m           11Mi
+        monitoring-prometheus-node-exporter-fl5fw                2m           10Mi
+
+    % it will gave you cpu, memory usage.
+
+    # add a dashboard to visualise metrics
+    $ minikube addons list
+    $ minikube addons enable dashboard
+    $ minikube dashboard
+
+    # NOW WE ARE GOING TO CHANGE JAVA APPS CONTAINERS WITH OTHERS THAT ARE MORE OPTIMIZED
+    # In other words we defined for them the maximum memory to consume ( -Xms )
+
+    - update : change all containers tags to resources
+
+    $ kubectl apply -f workloads.yml
+    $ kubectl top pod
