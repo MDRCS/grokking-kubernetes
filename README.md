@@ -1116,3 +1116,67 @@
 
     # login is admin/prom-operator
     # click on home and choice for example pods
+
+
+### + Alert Manager
+
+    $ kubectl get pod
+    $ kubectl get svc
+
+    $ export EDITOR=nano
+    $ kubectl edit svc monitoring-prometheus-oper-alertmanager
+
+    -> 192.168.64.8:31156
+
+    - Setting up a Slack Channel to send Alerts using a webhook :
+
+    + login, and create a channel `#alerts`
+    + create an app -> `Incomming Webhooks`
+    + choose #alerts as a channel
+
+    # test curl op
+    $ curl -X POST --data-urlencode "payload={\"channel\": \"#alerts\", \"username\": \"webhookbot\", \"text\": \"Ceci est publié dans #alerts et provient d'un robot nommé webhookbot.\", \"icon_emoji\": \":ghost:\"}" https://hooks.slack.com/services/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
+
+    # config AlertManager
+    $ vi alertmanager.yaml
+    $
+    $ https://prometheus.io/docs/alerting/configuration/
+
+    + what is secrets
+      secrets is just a way to store configuration, passwords, secret keys etc..
+
+    $ kubectl get secrets
+    $ kubectl get secret alertmanager-monitoring-prometheus-oper-alertmanager -o json
+
+    $ get the token # we will try to  decrypt it to see the config file is content.
+
+    $ echo Z2xvYmFsOgogIHJlc29sdmVfdGltZW91dDogNW0KcmVjZWl2ZXJzOgotIG5hbWU6ICJudWxsIgpyb3V0ZToKICBncm91cF9ieToKICAtIGpvYgogIGdyb3VwX2ludGVydmFsOiA1bQogIGdyb3VwX3dhaXQ6IDMwcwogIHJlY2VpdmVyOiAibnVsbCIKICByZXBlYXRfaW50ZXJ2YWw6IDEyaAogIHJvdXRlczoKICAtIG1hdGNoOgogICAgICBhbGVydG5hbWU6IFdhdGNoZG9nCiAgICByZWNlaXZlcjogIm51bGwi | base64 -D
+
+    $ kubectl delete secret alertmanager-monitoring-prometheus-oper-alertmanager
+
+    $ kubectl create secret generic alertmanager-monitoring-prometheus-oper-alertmanager --from-file=alertmanager.yaml
+
+    # check if alertmanager is loaded the new config
+    $ kubectl logs alertmanager-monitoring-prometheus-oper-alertmanager-0 -c alertmanager
+
+        level=info ts=2020-05-31T02:33:28.755Z caller=coordinator.go:119 component=configuration msg="Loading configuration file" file=/etc/alertmanager/config/alertmanager.yaml
+        level=info ts=2020-05-31T02:33:28.759Z caller=coordinator.go:131 component=configuration msg="Completed loading of configuration file" file=/etc/alertmanager/config/alertmanager.yaml
+
+    !IMPORTANT! THE NAME OF THE FILE SHOULD BE `alertmanager.yaml`
+
+### % it was loaded succefully and notifcation has been sent :
+
+![](./static/slack-channel-alerts.png)
+
+    # Solving the first Error :
+     + problem 1 :
+         [FIRING:1] etcdInsufficientMembers (kube-etcd default/monitoring-prometheus-oper-prometheus critical)
+         @canal
+         summary: etcd cluster "kube-etcd": insufficient members (0).
+
+    + Solution :
+
+        # go to the master node where normaly etcd in and click on security
+         group -> inbound -> update cutom tcp rule -> change lowerbound from 4003 to 4001.
+
+![](./static/resolved-alerts.png)
