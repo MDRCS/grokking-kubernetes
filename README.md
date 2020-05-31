@@ -194,7 +194,6 @@
 
     + Be sure to note the Role ARN. You will need it when creating the Kubernetes cluster in the steps below.
 
-
     Step 2: Creating a VPC for EKS
 
     Next, we’re going to create a separate VPC for our EKS cluster. To do this, we’re going to use a CloudFormation
@@ -673,7 +672,7 @@
     - getting started :
 
     1- create ec2 instance
-    2- connect -> ssh -i swarm-cluster.pem ec2-user@100.25.164.188
+    2- connect -> ssh -i swarm-cluster.pem ec2-user@3.85.177.65
 
     # install kops on ec2 instance :
     3- curl -LO https://github.com/kubernetes/kops/releases/download/$(curl -s https://api.github.com/repos/kubernetes/kops/releases/latest | grep tag_name | cut -d '"' -f 4)/kops-linux-amd64
@@ -809,7 +808,7 @@
     $ kops edit ig nodes --name ${NAME}
         spec:
           image: kope.io/k8s-1.16-debian-stretch-amd64-hvm-ebs-2020-01-17
-          machineType: t2.medium
+          machineType: t2.micro
           maxSize: 2 -> 5
           minSize: 2 -> 3
 
@@ -831,7 +830,6 @@
 
     # to check if our cluster is live our not
     $ kops validate cluster
-
 
     # display nodes created
     $ kubectl get nodes --show-labels
@@ -855,7 +853,7 @@
     $ kubectl apply -f storage-aws.yml
 
     # check for the volume that we created
-    $ kubectl get pv
+    $ kubectl get pv -n kube-system
 
 
     # mongo docker image
@@ -947,7 +945,7 @@
     $ kubectl get all
 
     # check logs
-    $ kubectl logs -f pod/position-tracker-65cff5b766-x4hsp
+    $ kubectl logs -f pod/position-tracker-65cff5b766-85nkc
     2020-05-29 20:27:36.439  INFO 1 --- [           main] org.mongodb.driver.cluster               : Adding discovered server fleetman-mongodb.default.svc.cluster.local:27017 to client view of cluster
     # we can see that position-tracker microservice made a connection to the database mongodb.
 
@@ -1006,8 +1004,7 @@
     - !! Great, we broke the system by deleting the node and guess what there was no downtime.
 
     ++ to delete the cluster
-    4 kubectl delete cluster --name ${NAME} --yes
-
+    $ kops delete cluster --name ${NAME} --yes
 
 #### + setting up ELK Stack for logging and Anaytics :
 
@@ -1045,7 +1042,7 @@
     $ kubectl apply -f elastic-stack.yml
 
     # new elk pods are not in the default namespace so you won't see them here.
-    $ kubectl get all
+    $ kubectl get all -n kube-system
 
     # kubectl get po -n kube-system
 
@@ -1054,15 +1051,16 @@
 
     # get info about front-end kibana systen
     $ kubectl describe service kibana-logging -n kube-system
-    $ aebf65e23a9d94cc19c780a8a863a79b-1977097947.us-east-1.elb.amazonaws.com:32233
+    $ http://a0257e08879794a52939a263a430dfda-1054439490.us-east-1.elb.amazonaws.com:5601/
 
-    abe29003e04eb420d9c0d0cfed108d52-1239844185.us-east-1.elb.amazonaws.com:32251
     kubectl logs -f elasticsearch-logging-0 -n kube-system
-
 
     kubectl logs -f elasticsearch-logging-0 -n kube-system
 
     kubectl describe svc kibana-logging -n kube-system
+    kubectl get pod elasticsearch-logging-0 -n kube-system
+
+    sudo sysctl -w vm.max_map_count=262144
 
 ![](./static/efk.png)
 
@@ -1070,3 +1068,51 @@
     - next, create an index pattern
     - name it, logstash*
     - next, select timestamps !!
+
+### + Monitoring a CLUSTER (Grafana & Prometheus) :
+
+    - Easiest way to install Grafana & Prometheus in kubernetes is using Helm a package manager for k8.
+      https://github.com/helm/helm
+
+    1- install Helm on ec2 instance.
+    # go to https://github.com/helm/helm/releases/tag/v3.2.1
+    # copy the link of linux files
+    $ wget https://get.helm.sh/helm-v3.2.1-linux-amd64.tar.gz
+    $ ls
+
+    2- unzip the folder
+    $ tar zxvf helm-v3.2.1-linux-amd64.tar.gz
+    $ sudo mv linux-amd64/helm /usr/local/bin
+    $ rm helm-v3.2.1-linux-amd64.tar.gz
+    $ rm -rf ./linux-amd64
+
+    $ helm version
+
+    $ helm repo add stable https://kubernetes-charts.storage.googleapis.com/
+    $ helm repo update
+
+    $ helm install monitoring stable/prometheus-operator
+
+
+    # reach to prometheous by activiting a loadbalancer
+    $ kubectl edit svc monitoring-prometheus-oper-prometheus
+    change type: ClusterIP to type: NodePort
+
+    $ minikube ip
+    $ kubectl get svc # check the port to connect to prometheous
+    % 192.168.64.8:30215
+
+
+    # reach to grafana by activiting a loadbalancer
+    $ kubectl edit svc monitoring-grafana
+    change type: ClusterIP to type: NodePort
+
+    $ minikube ip
+    $ kubectl get svc # check the port to connect to prometheous
+    % 192.168.64.8:32385
+
+    # to get the password go to this link -> https://github.com/helm/charts/tree/master/stable/prometheus-operator
+    # go to `Grafana` and search for `grafana.adminPassword`.
+
+    # login is admin/prom-operator
+    # click on home and choice for example pods
