@@ -1,0 +1,29 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: default
+  name: new-joiner
+rules:
+- apiGroups: ["","apps","autoscaling","extensions"] # "" indicates the core API group | `apps` API group for deployment
+  resources: ["*"] # look at all resources without Deployement because of apiGroup of Deployment (apps/v1) is diffrent from (/) core Api group  .
+  verbs: ["get", "watch", "list"]
+
+---
+
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+# This role binding allows "jane" to read pods in the "default" namespace.
+# You need to already have a Role named "pod-reader" in that namespace.
+metadata:
+  name: put-specific-user-or-users-into-new-joiner-role
+  namespace: default
+subjects:
+# You can specify more than one "subject"
+- kind: User
+  name: mdrahali-linux-login-name # "name" is case sensitive
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  # "roleRef" specifies the binding to a Role / ClusterRole
+  kind: Role #this must be Role or ClusterRole
+  name: new-joiner # this must match the name of the Role or ClusterRole you wish to bind to
+  apiGroup: rbac.authorization.k8s.io

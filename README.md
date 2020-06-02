@@ -1349,3 +1349,207 @@
     ++ !!! we can set high priority to queue pod because :
     ++ for the queue if we kill the pod it will restart but all the data that was in it will be lost
        so it's advisable to use hosted Queue lime Amazon ActiveMQ or Amazon SQS etc..
+
+
+### - RBAC Authorization
+
+    https://kubernetes.io/docs/reference/access-authn-authz/rbac/
+
+    + requirements
+    - tomorrow we have a new joiner, and we want to give him the ability :
+
+      # look at all resources (pods, deployments, services ..)
+      # creating their own pods/deployment in there own `playground` namespace.
+
+
+    # to create a new role
+    $ kubectl apply -f role-for-new-joiner.yml
+    $ kubectl get rolebinding
+    $ kubectl describe <role_name> # to see every user linked to this role
+
+    # Authenticating | creating a context for the user
+
+    - to authenticate we should establish a distributed private key
+
+    $ useradd mdrahali-linux-login-name # create a new user in linux
+    $ ls /home # to see all users in linux host machine
+    $ sudo passwd mdrahali-linux-login-name
+    $ kubectl create ns playground
+    $ su - mdrahali-linux-login-name # connect as new user
+
+    $ kubectl get all # ops i cannot release this operation.
+
+    $ exit # get back to ec2-user
+
+    $ kubectl config view # copy the `server` and `cluster`
+    $ su - mdrahali-linux-login-name
+    $ kubectl config set-cluster `cluster` --server=`cluster`
+    $ kubectl config view # check updates
+
+    $ kubectl get all # I still cannot execute this operation.
+
+    # set a context
+
+    $ kubectl config set-context mycontext --user mdrahali-linux-login-name --cluster `cluster`
+    $ kubectl config view # check updates
+
+    # use the new context
+    $ kubectl config use-context mycontext
+
+    $ kubectl get all # error i should have an x509 certificate to connect to the server.
+    s exit # back to ec2-user (super-user)
+
+### + Setting up the new certificate :
+
+![](./static/scenario-process.png)
+
+    # ec2-user
+
+    $ openssl genrsa -out private-key-mdrahali.key 2048
+    $ openssl req -new -key private-key-mdrahali.key -out req.csr -subj "/CN=mdrahali-linux-login-name"
+
+    # now we should get kuberenetes key from s3 bucket
+    $ aws ls s3://<s3-bucket-name>/ # follow the path till finding `pki` folder inside you will find a key with this format
+      32u93449509834.key
+
+    $ aws s3 cp s3://<s3-bucket-name>/..../pki/32u93449509834.key kubernetes.key
+    $ chmod 400 kubernetes.key # set file readonlu by this user
+    $ chmod 400 private-key-mdrahali.key
+
+    # now go to a folder /pki/issued/ca
+    # you will find something like 32u93449509834.crt
+
+    $ aws s3 cp s3://<s3-bucket-name>/..../pki/32u93449509834.crt kubernetes.crt
+    $ openssl x509 -req -in req.csr -CA kubernetes.crt -CAkey kubernetes.key -CAcreateserial -out mdrahali.crt -days 365
+
+    $ sudo mkdir /home/mdrahali-linux-login-name/.certs
+    $ sudo mv mdrahali.crt /home/mdrahali-linux-login-name/.certs
+    $ sudo mv private-key-mdrahali.key /home/mdrahali-linux-login-name/.certs
+    $ sudo mv kubernetes.key /home/mdrahali-linux-login-name/.certs
+
+    $ rm kubernetes.key
+    $ rm kubernetes.srl
+    $ req.csr
+
+    # change owner of this folder
+    $ sudo chown -R mdrahali-linux-login-name:mdrahali-linux-login-name /home/mdrahali-linux-login-name/.certs/
+
+    # login as mdrahali user
+    $ su - mdrahali-linux-login-name
+
+    $ kubectl get all # I still cannot execute this operation.
+
+    $ cd /.certs
+    $ ls -la # i should get this field in my kubectl config
+    $ kubectl config set-credentials mdrahali-linux-login-name --client-certificate=mdrahali.crt --client-key=private-key-mdrahali.key
+    $ kubectl config set-cluster `cluster` --certificate-authority=kubernetes.crt
+    $ exit # back to ec2-user
+
+    $ kubectl apply -f role-for-new-joiner.yml # execute role file
+
+    $ su - mdrahali-linux-login-name
+
+    $ kubectl get pod # it work
+    $ kubectl get svc # it not working i can't see deployments because they are not in the same apiGroup
+
+    $ exit
+
+    $ vi role-for-new-joiner.yml
+
+    # add "autoscaling" and "extensions" to apiGroups
+    $ kubectl apply -f role-for-new-joiner.yml
+
+    $ su - mdrahali-linux-login-name
+    $ kubectl get all # it work fine.
+
+    # now we have a smal problem is that we are allowed to work just on the `default` namespace
+    # to allow the new-joiner to work on every namespace you should change
+        kind: Role
+            metadata:
+              namespace: default
+              name: new-joiner
+
+
+        to :
+
+        kind: ClusterRole
+            metadata:
+              name: new-joiner
+
+
+    And
+
+            kind: RoleBinding
+                apiVersion: rbac.authorization.k8s.io/v1
+                metadata:
+                  name: put-specific-user-or-users-into-new-joiner-role
+                  namespace: default
+            ...
+            roleRef:
+              # "roleRef" specifies the binding to a Role / ClusterRole
+              kind: Role #this must be Role or ClusterRole
+            to :
+
+            kind: ClusterRoleBinding
+                apiVersion: rbac.authorization.k8s.io/v1
+                metadata:
+                  name: put-specific-user-or-users-into-new-joiner-role
+            ....
+            roleRef:
+              # "roleRef" specifies the binding to a Role / ClusterRole
+              kind: ClusterRole #this must be Role or ClusterRole
+
+    $ kubectl apply -f role-for-new-joiner.yml
+
+    # now there is another issue is that i could not access `playground` namespace
+
+    # to solve this problem is to add this roles to `role-for-new-joiner.yml` file
+
+      ---
+      apiVersion: rbac.authorization.k8s.io/v1
+        kind: Role
+        metadata:
+          namespace: playground
+          name: new-joiner
+        rules:
+        - apiGroups: ["","apps","extensions"]
+          resources: ["*"]
+          verbs: ["*"]
+
+       ---
+
+        kind: RoleBinding
+        apiVersion: rbac.authorization.k8s.io/v1
+        metadata:
+          name: new-joiner-role-binding
+          namespace: playground
+        subjects:
+        - kind: User
+          name: mdrahali-linux-login-name
+        roleRef:
+          kind: Role #this must be Role or ClusterRole
+          name: new-joiner # this must match the name of the Role or ClusterRole you wish to bind to
+          apiGroup: rbac.authorization.k8s.io
+
+    $ kubectl apply -f role-for-new-joiner.yml
+
+    $ su - mdrahali-linux-login-name
+    $ kubectl get all -n playground # it work
+
+    $ vi first-pod.yml
+
+        apiVersion: v1
+        kind: Pod
+        metadata:
+          name: webapp
+          namespace: playground # remember that this user could work just on this namespace
+        spec:
+          containers:
+          - name: webapp
+            image: richardchesterwood/k8s-fleetman-webapp-angular:release0
+
+
+    $ kubectl apply -f first-pod.yml
+    $ kubectl get pod -n playground # it work .. Congratulations !!
+
+    - There is also ServiceAccount and is used to give pods access to other pods.
