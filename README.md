@@ -1664,3 +1664,92 @@
         1f2d1e2e67dfM
 
     Voila !!
+
+### + Ingress Control - Nginx :
+
+    https://kubernetes.io/docs/concepts/services-networking/ingress-controllers/
+
+![](./static/first-config.png)
+
+    - If we want to access both services (webapp, ActiveMQ) we should config two load balancers in aws for example,
+      or we could use Ingress Control concept in kubernetes to route to this services.
+
+![](./static/ingress-control.png)
+
+    + Ingress Control basicaly is Nginx load balancer allows us to access pods using diffrent domainname (or ip addresses in dev env).
+    + The mean goal of ingress Control is to reduce number of load balancers (aws: ALB)
+
+    # Setup domainame localy to access minikube vm
+
+    $ minikube ip
+    192.168.64.9
+
+    $ cd /etc/
+    $ sudo vi hosts
+        192.168.64.9 fleetmangmt.com
+
+    $ curl fleetmangmt.com:30080/
+
+    #localy
+    $ minikube addons enable ingress
+
+    $ kubectl get svc # get service of webapp and port
+    $ vi ngress-lb.yml # define your routes
+    $ kubectl apply -f ingress-lb.yml
+
+    $ kubectl get ingress
+    $ kubectl describe ingress basic-routing
+
+    # Adding route
+    $ cd /etc/
+    $ sudo vi hosts
+        192.168.64.9 queue.fleetmangmt.com
+
+    $ vi ingress-lb.yml # add this
+
+        - host: queue.fleetmangmt.com
+          http:
+            paths:
+              - path: /
+                backend:
+                  serviceName: fleetman-queue
+                  servicePort: 80
+
+    $ kubectl apply -f ingress-lb.yml
+    $ kubectl describe ingress basic-routing
+
+    # Authentification to access to a route
+    https://kubernetes.github.io/ingress-nginx/examples/auth/basic/
+
+    1- go to https://www.htaccesstools.com/htpasswd-%20generator/ (use bcrypt)
+       admin:$2y$10$5Ylb5sjSPqax6NwBvRMKUOxIEx6stDgBHS5DMi7PuNNVIZtA3WRGK
+
+    2- save under filename `auth` -> vi auth
+      admin:$2y$10$5Ylb5sjSPqax6NwBvRMKUOxIEx6stDgBHS5DMi7PuNNVIZtA3WRGK
+
+    3- kubectl create secret generic mycredentials --from-file=auth
+
+    $ kubectl get secret mycredentials
+    $ kubectl get secret mycredentials -o yaml
+
+    4- vi ingress-secure-lb.yml
+    5- kubectl apply -f ingress-secure-lb.yml
+    6- kubectl describe ingress secure-routing
+
+    # go check urls queue.fleetmangmt.com
+
+
+    # I uses two files one to secure access to queue.fleetmangmt.com and one to route to webapp service fleetmangmt.com.
+    $ kubectl apply -f .
+
+    # Get Ingress LB in aws :
+
+    # in aws cloud
+    https://kubernetes.github.io/ingress-nginx/deploy/#aws
+
+    $ kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-0.32.0/deploy/static/provider/aws/deploy.yaml
+    # change all services to ClusterIP, domainnames should be linked to Route53. (if you have another domain not the same as what is in ingress files changes them)
+    # mycredentials should be present in the ec2 node.
+
+    # Setting-up HTTPS on aws:
+    https://www.youtube.com/watch?v=gEzCKNA-nCg&feature=youtu.be
