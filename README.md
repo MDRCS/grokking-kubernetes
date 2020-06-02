@@ -1553,3 +1553,114 @@
     $ kubectl get pod -n playground # it work .. Congratulations !!
 
     - There is also ServiceAccount and is used to give pods access to other pods.
+
+### + ConfigMaps & Secrets :
+
+    - ConfigMaps allows us to store enviroment variables in kubernetes cluster.
+
+    $ vi database.config.yml
+
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: global-database-config
+          namespace: default
+        data:
+          database-url: "https://dbserver.somewhere.com:3306/"
+          database-password: "password"
+
+    $ kubectl apply -f database.config.yaml
+    $ kubectl get cm
+    $ kubectl describe cm global-database-config
+
+    # now we should link this config file with file where we have images `workloads.yml`
+
+    $ kubectl apply -f database-config.yml
+    $ kubectl apply -f workloads-configmaps.yml
+
+
+    # get into position-simulator image to check if envs variables are there
+    $ kubectl exec -it position-tracker-f4799d975-jd4rw  -- bash
+    $ root@position-simulator-5f9b8b7669-wp9ct:/# echo $DATABASE_URL
+        https://dbserver.somewhere.com:3306/
+
+    It work !!
+
+    # there is a small issue is that if we change something in configMap it won't reflect directly
+      in the images, the only solution is to kill the pod to make restart and request the new config values.
+
+    $ kubectl get all
+    $ kubectl delete pod position-simulator-5f9b8b7669-wp9ct
+    $ kubectl exec -it position-simulator-5f9b8b7669-zwr4t  -- bash
+    $ root@position-simulator-5f9b8b7669-wp9ct:/# echo $DATABASE_URL
+        https://changed.somewhere.com:3306/
+
+    It work !!
+
+    ! IMPORTANT : There is another method to force peeking new values from the file, is to create a new file
+      change this name `global-database-config` with a new one change it in the `worloads` file apply changes
+      and automatically the image will detect that the file changed and it will peek the content of the new file.
+
+    - The problem in this approch is that we should change this `global-database-config` to this `global-database-config-v2`
+    for example in all the file (you can do it with a script).
+
+
+    # Another way to config env variables :
+
+    from this :
+
+         - name: DATABASE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: global-database-config
+              # Specify the key associated with the value
+              key: database.url
+        - name: DATABASE_PASSWORD
+          valueFrom:
+            configMapKeyRef:
+              name: global-database-config
+              # Specify the key associated with the value
+              key: database.password
+
+    to this :
+
+        envFrom:
+        - configMapRef:
+            name: global-database-config
+
+
+    # Another way to store config variables :
+
+    $ cd volume-mounts-config
+    $ kubectl apply -f .
+    $ kubectl exec -it position-simulator-7b87fc5cf4-g85pz --  bash
+    $ ls
+    $ cd /etc/any/directory/config
+    $ cat database-properties
+        database-url= "https://changed.somewhere.com:3306/"
+        database-password= "password"
+
+### + Secrets :
+
+    https://kubernetes.io/docs/concepts/configuration/secret/
+
+    $ vi aws-credentials.yml # pay attention in secret object values in data need to be encoded in base64 plaintext is forbidden
+    # or you can inplace to mark "data" -> "stringData" and put string into quotation mark.
+    $ kubectl apply -f aws-credentials.yml
+
+    # we can convert in text to base64
+    $ echo "mdrahali" | base64
+        bWRyYWhhbAo=
+
+    + Problem with `secrets` is that they are not secure. i can decode accessKey and secretKey easily
+    # one important thing is that encoding != encrypting
+    $ kubectl get secrets
+    $ kubectl get secret aws-credentials -o yaml
+        data:
+          accesskey: YWRtaW4=
+          secretKey: MWYyZDFlMmU2N2Rm
+
+    $ echo MWYyZDFlMmU2N2Rm | base64 -D
+        1f2d1e2e67dfM
+
+    Voila !!
