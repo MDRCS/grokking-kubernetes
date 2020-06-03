@@ -1784,3 +1784,71 @@
                      from -> spring.data.mongodb.host=fleetman-mongodb.default.svc.cluster.local
                      to -> spring.data.mongodb.uri=mongodb://mongo-0.mongo.default.svc.cluster.local,mongo-1.mongo.default.svc.cluster.local,mongo-2.mongo.default.svc.cluster.local/fleetman
 
+
+### +  CI/CD :
+
+    + Setup a dedicated jenkins server
+    + Setup An organization where we will put our Microservices repos
+    https://github.com/disruptive-tech-community
+
+    # link minikube with docker daemon :
+
+    $ minikube docker-env
+    $ eval $(minikube -p minikube docker-env)
+    $ cd jenkins && git clone https://github.com/disruptive-tech-community/jenkins.git
+
+    # keep just Dockerfile and jenkins file.
+
+    # build the image that we are going to use for this jenkins server
+    $ docker build . -t myjenkins
+    $ docker images
+
+    $ kubectl apply -f jenkins.yaml
+
+    $ kubectl get svc
+    $ minikube ip
+    192.168.64.9:31000
+
+    $ kubectl get all
+      pod/api-gateway-769f8d44cb-7sfrh         1/1     Running              0          117s
+
+
+    # config credentials
+    # go to jenkins manager -> system configure
+    # go to Propriétés globales -> env variables
+    # add this two variables
+        ORGANIZATION_NAME : disruptive-tech-community # organization name
+        YOUR_DOCKERHUB_USERNAME: mdrahali # docker hub name
+
+    # go to new job
+    # select `Multibranch pipeline`, create
+    # add a name
+    # go to branch sources -> add `jenkins`
+    # enter login (username/password of github account), and ID `GitHub` (like this change nothing)
+    # select ` Repository Scan - Deprecated Visualization`
+    # owner `disruptive-tech-community` (organization name)
+    # choose your repo
+    # click save
+
+
+    $ kubectl describe pod api-gateway-769f8d44cb-7sfrh
+    # pod pulled from CD Jenkins
+      Normal   Pulled     2m44s                  kubelet, minikube  Container image "mdrahali/disruptive-tech-community-fleetman-api-gateway:2" already present on machine
+
+    # demo for pushing to minikube
+    $ kubectl get pod --watch
+
+    # go to multibranch `api-gateway` pipeline
+    # click on launch a build
+
+    IMPORTANT !! : In each repo we should have three files docker , jenkins, kubernetes (Dockerfile, jenkins.yaml, deploy.yml).
+
+![](./static/target-process.png)
+
+    + Another Feature of Jenkins is that we can do CI/CD for all the organization
+    # go to jenkins and create a job
+    # give it a name and choose `Github Organisation`.
+    # specify credentials and click save.
+
+    + Also we can create a webhook between organisation github and jenkins so evry
+      commit will trigger a new build.
