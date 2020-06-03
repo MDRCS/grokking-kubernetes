@@ -1753,3 +1753,34 @@
 
     # Setting-up HTTPS on aws:
     https://www.youtube.com/watch?v=gEzCKNA-nCg&feature=youtu.be
+
+
+### + CronJobs k8:
+
+    - Cronjobs are jobs that are scheduled to run in a given time repeatedly.
+
+    $ get cron from https://crontab.guru/#23_0-20/2_*_*_*
+
+    + DeamonSet are pods that run in every nodes without specifying number of repicas and are used specificaly for logstack, fluentd (logging collectors pods) that
+      needs to be present in eery node for monitoring.
+
+
+![](./static/statefulSet.png)
+![](./static/replicas-database.png)
+
+    + Example scaling mongodb horizontally by adding more replicas:
+      we should declare the pod of mongodb as StatefulSet with 3 replicas
+      the replicas will be named sequentialy mongo-server-1, mongo-server-2, mongo-server-3
+      there will be an election of the primary database there is also a communication between all
+      replicas, the client application will communicate with `service` of Stateful Pod, and it will do load
+      balancing between replicas, and if primary replicas crashes there will be another election
+      for the next primary db.
+
+![](./static/replicat-mongodb.png)
+![](./static/lb-service-statfulset.png)
+
+    - Client will be (js example) -> $ var url = ‘mongodb://mongo-1,mongo-2,mongo-3:27017/dbname_?’;
+                     (spring example) change from one replicas to three
+                     from -> spring.data.mongodb.host=fleetman-mongodb.default.svc.cluster.local
+                     to -> spring.data.mongodb.uri=mongodb://mongo-0.mongo.default.svc.cluster.local,mongo-1.mongo.default.svc.cluster.local,mongo-2.mongo.default.svc.cluster.local/fleetman
+

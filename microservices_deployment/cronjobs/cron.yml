@@ -1,0 +1,16 @@
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: cron-job
+spec: # CronJob
+  schedule: "* * * * *" # the job will run every minute get cron from https://crontab.guru/#23_0-20/2_*_*_*
+  jobTemplate:
+    spec: # Job
+    template:
+      spec: # Pod
+        containers:
+        - name: long-job
+          image: python
+          command: ["-c",  "import time; print('starting'); time.sleep(30);  print('done')"]
+        restartPolicy: Never
+    backoffLimit: 2 # number of times where job could fail and stil restart it.

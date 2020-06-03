@@ -1,0 +1,13 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job
+spec:
+  template:
+    spec:
+      containers:
+      - name: long-job
+        image: python
+        command: ["-c",  "import time; print('starting'); time.sleep(30);  print('done')"]
+      restartPolicy: Never
+  backoffLimit: 2 # number of times where job could fail and stil restart it.
