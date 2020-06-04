@@ -2082,4 +2082,131 @@
     Eventually you will want to parameterize your application to make its configuration more reusable in different environments. Packaging tools like Helm are the best
     choice for this kind of parameterization.
 
+### + Developer Workflows - Building a Development Cluster :
+
+    - Setting Up a Shared Cluster for Multiple Developers
+      When setting up a large cluster, the primary goal is to ensure that multiple users can simultaneously use the cluster without
+      stepping on one another’s toes. The obvious way to separate your different developers is with Kubernetes namespaces.
+      Namespaces can serve as scopes for the deployment of services so that one user’s frontend service doesn’t interfere
+      with another user’s frontend service. Namespaces are also scopes for RBAC, ensuring that one developer cannot
+      accidentally delete another developer’s work. Thus, in a shared cluster it makes sense to use a namespace as a
+      developer’s workspace.
+
+    + Generate Certificate FOR NEW DEV :
+    $ cd developer_workflow
+    $ go run generate_certificate.go client dev1
+
+     This creates files called client-key.pem and client.csr. You then can run the following script to create and download
+     a new certificate :
+
+    $ vi ndev-kubeconfig
+    $ chmod +x ndev-kubeconfig.sh # make the file an executable
+    $ bash ndev-kubeconfig.sh #run the script `ndev-kubeconfig` to generate config for the cluster.
+
+    This script prints out the final information that you can add to a kubeconfig file to enable that user.
+    Of course, the user has no access privileges, so you will need to apply Kubernetes RBAC for the user in order to
+    grant them privileges to a namespace.
+
+
+    + Create a namespace
+     ns='my-namespace'
+     kubectl create namespace ${ns}
+     kubectl annotate namespace ${ns}
+     annotation_key=annotation_value
+
+    + RBAC Authorization :
+    + When the namespace is created, you want to secure it by ensuring that you can grant access to the namespace to a specific user.
+      To do this, you can bind a role to a user in the context of that namespace. You do this by creating a RoleBinding object within
+      the namespace itself. The RoleBinding might look like this:
+
+    $ vi role-binding.yaml
+
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: RoleBinding
+        metadata:
+          name: example
+          namespace: my-namespace
+        roleRef:
+          apiGroup: rbac.authorization.k8s.io
+          kind: ClusterRole
+          name: edit
+        subjects:
+        - apiGroup: rbac.authorization.k8s.io
+          kind: User
+          name: myuser
+
+    $ kubectl create -f role-binding.yaml
+
+    + If you want to limit the amount of resources consumed by a particular namespace, you can use the ResourceQuota
+      resource to set a limit to the total number of resources that any particular namespace consumes. For example,
+      the following quota limits the namespace to 10 cores and 100 GB of memory for both Request and Limit for
+      the pods in the namespace:
+
+        apiVersion: v1
+        kind: ResourceQuota
+        metadata:
+          name: limit-compute
+          namespace: my-namespace
+        spec:
+          hard:
+            requests.cpu: "10"
+            requests.memory: 100Gi
+            limits.cpu: "10"
+            limits.memory: 100Gi
+
+    + Namespace management
+      making the developer’s namespace too persistent encourages the developer to leave things lying around in the namespace
+      after they are done with them, and garbage-collecting and accounting individual resources is more complicated.
+      An alternate approach is to temporarily create and assign a namespace with a bounded time to live (TTL).
+      This ensures that the developer thinks of the resources in the cluster as transient and that it is
+      easy to build automation around the deletion of entire namespaces when their TTL has expired.
+
+
+    + In this model, when the developer wants to begin a new project, they use a tool to allocate a new namespace for the project.
+      When they create the namespace, it has a selection of metadata associated with the namespace for management and accounting.
+      Obviously, this metadata includes the TTL for the namespace, but it also includes the developer to which it is assigned,
+      the resources that should be allocated to the namespace (e.g., CPU and memory), and the team and purpose of the namespace.
+      This metadata ensures that you can both track resource usage and delete the namespace at the right time.
+
+    + you can use ScheduledJobs to acheive allocation of new namespaces and doing garbage collecting for Experied TTL namespaces.
+
+
+    + App Initial Startup - Best Practices :
+    best solution is to have a startup script like startup.sh that create all depandencies
+    within a namespace to ensure that all of the application’s dependencies are correctly created, example (node.js) :
+
+        kubectl create my-service/database-stateful-set-yaml
+        kubectl create my-service/middle-tier.yaml
+        kubectl create my-service/configs.yaml
+
+        You then could integrate this script with npm by adding the following to your package.json:
+        {
+            ...
+            "scripts": {
+                "setup": "./setup.sh",
+                ...
+            }
+        }
+
+
+    + Containers - Best Practices
+    the best practice is to delete and re-create the Deployment. for new release of a docker image.
+
+    Just like installing dependencies, it is also a good practice to make a script for performing this deployment.
+    An example deploy.sh script might look like the following:
+
+    kubectl delete -f ./my-service/deployment.yaml
+    perl -pi -e 's/${old_version}/${new_version}/' ./my-service/deployment.yaml
+    kubectl create -f ./my-service/deployment.yaml
+
+    + Setting Up a Development Environment Best Practices
+    Setting up successful workflows on Kubernetes is key to productivity and happiness. Following these best practices will help to ensure that developers are up and running quickly:
+    Think about developer experience in three phases: onboarding, developing, and testing. Make sure that the development environment you build supports all three of these phases.
+    When building a development cluster, you can choose between one large cluster and a cluster per developer. There are pros and cons to each, but generally a single large cluster
+    is a better approach.
+    When you add users to a cluster, add them with their own identity and access to their own namespace. Use resource limits to restrict how much of the cluster they can use.
+    When managing namespaces, think about how you can reap old, unused resources. Developers will have bad hygiene about deleting unused things. Use automation to clean it up for them.
+    Think about cluster-level services like logs and monitoring that you can set up for all users. Sometimes, cluster-level dependencies like databases are also useful to set up on behalf
+    of all users using templates like Helm charts.
+
 
