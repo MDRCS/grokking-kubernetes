@@ -1,0 +1,19 @@
+# static-files server is service
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    run: fileserver
+  name: fileserver
+  namespace: default
+spec:
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    run: fileserver
+  sessionAffinity: None
+  type: ClusterIP
+
+

@@ -1852,3 +1852,234 @@
 
     + Also we can create a webhook between organisation github and jenkins so evry
       commit will trigger a new build.
+
+
+### +  Advanced Kubernetes :
+
+    + Setting Up a Basic Service - Application Overview :
+
+    The application that we will use for our sample isn’t particularly complex.
+    It’s a simple journal service that stores its data in a Redis backend. It has a separate static file server using NGINX.
+    It presents two web paths on a single URL. The paths are one for the journal’s RESTful application programming interface (API),
+    https://my-host.io/api, and a file server on the main URL, https://my-host.io. It uses the Let’s Encrypt service for managing
+    Secure Sockets Layer (SSL) certificates. Figure 1-1 presents a diagram of the application. Throughout this chapter,
+    we build up this application, first using YAML configuration files and then Helm charts.
+
+
+![](./static/simple-webapp.png)
+
+
+    + App description :
+      application exposes an HTTP service on port 8080 that serves requests to the /api/* path and uses the Redis backend to add,
+      delete, or return the current journal entries. This application can be built into a container image using the included
+      Dockerfile and pushed to your own image repository. Then, substitute this image name in the YAML examples that follow.
+
+
+    + Security Risks :
+      In general, the image build process can be vulnerable to “supply-chain attacks.” In such attacks, a malicious user injects
+      code or binaries into some dependency from a trusted source that is then built into your application. Because of the risk
+      of such attacks, it is critical that when you build your images you base them on only well-known and trusted image providers.
+      Alternately, you can build all your images from scratch. Building from scratch is easy for some languages (e.g., Go)
+      that can build static binaries, but it is significantly more complicated for interpreted languages like Python, JavaScript, or Ruby.”
+
+    + Naming Problems of docker images :
+      In particular, some combination of the semantic version and the SHA hash of the commit where the image was built is a good practice
+      for naming images (e.g., v1.0.1-bfeda01f). If you don’t specify an image version, latest is used by default. Although this can be
+      convenient in development, it is a bad idea for production usage because latest is clearly being mutated every time a
+      new image is built.
+
+
+    + Replication of Stateless pods :
+      Though our application is unlikely to sustain large-scale usage, it’s still a good idea to run with at least two replicas so
+      that you can handle an unexpected crash or roll out a new version of the application without downtime.
+
+    + ReplicaSet vs Deployment :
+      Though in Kubernetes, a ReplicaSet is the resource that manages replicating a containerized application,
+      so it is not a best practice to use it directly. Instead, you use the Deployment resource. A Deployment
+      combines the replication capabilities of ReplicaSet with versioning and the ability to perform a staged
+      rollout. By using a Deployment you can use Kubernetes’ built-in tooling to move from one version of
+      the application to the next.
+
+    $ rm -r ~/.kube
+    $ rm -r ~/.minikube
+
+    $ minikube start --cpus 2 --memory 4096
+
+    $ cd journal-webapp/frontend
+    $ docker build -t journal-server .
+    $ docker tag journal-server mdrahali/journal-server:v1
+    $ docker push mdrahali/journal-server:v1
+
+    $ kubectl apply -f frontend.yml
+    $ kubectl describe deployment.apps/frontend
+
+    + Git Best practices - GitOps :
+      It is also a best practice to ensure that the contents of your cluster exactly match the contents of your source control.
+      The best pattern to ensure this is to adopt a GitOps approach and deploy to production only from a specific branch of your
+      source control, using Continuous Integration (CI)/Continuous Delivery (CD) automation. In this way you’re guaranteed that
+      source control and production match.
+
+    + Setting Up an External Ingress for HTTP Traffic
+    The containers for our application are now deployed, but it’s not currently possible for anyone to access the application.
+    By default, cluster resources are available only within the cluster itself. To expose our application to the world,
+    we need to create a Service and load balancer to provide an external IP address and to bring traffic to our containers.
+    For the external exposure we are actually going to use two Kubernetes resources. The first is a Service that load-balances
+    Transmission Control Protocol (TCP) or User Datagram Protocol (UDP) traffic. In our case, we’re using the TCP protocol.
+    And the second is an Ingress resource, which provides HTTP(S) load balancing with intelligent routing of requests based
+    on HTTP paths and hosts. With a simple application like this, you might wonder why we choose to use the more complex Ingress,
+    but as you’ll see in later sections, even this simple application will be serving HTTP requests from two different services.
+    Furthermore, having an Ingress at the edge enables flexibility for future expansion of our service.”
+
+    Before the Ingress resource can be defined, there needs to be a Kubernetes Service for the Ingress to point to.
+    We’ll use Labels to direct the Service to the pods that we created in the previous section. The Service is significantly
+    simpler to define than the Deployment and looks as follows:
+
+
+    $ kubectl apply -f services.yml
+    $ kubectl apply -f ingress-lb.yml
+    $ minikube ip
+        192.168.64.10
+    $ cd /etc
+    $ vi hosts
+    # add this two lines
+        192.168.64.10 api.journal.com
+        192.168.64.10 journal.com
+    $ kubectl get all
+
+    + Configuration in DEMAND :
+      In Kubernetes this sort of configuration is represented by a resource called a ConfigMap. A ConfigMap contains multiple
+      key/value pairs representing configuration information or a file. This configuration information can be presented
+      to a container in a pod via either files or environment variables. Imagine that you want to configure your online
+      journal application to display a configurable number of journal entries per page. To achieve this, you can define
+      a ConfigMap as follows:
+
+      $ kubectl create configmap frontend-config --from-literal=journalEntries=10
+
+    - and add this to frontend.yml :
+
+        env:
+        - name: JOURNAL_ENTRIES
+          valueFrom:
+            configMapKeyRef:
+              name: frontend-config
+              key: journalEntries
+
+
+    $ kubectl apply -f frontend.yml
+    $ kubectl exec -it pod/frontend-77c77f678f-bslj2 -- bash
+    $ -> # echo $JOURNAL_ENTRIES
+    $ printenv # print all env variables
+
+    IMPORTANT !! changing the configuration doesn’t actually trigger an update to existing pods. Only when the pod is
+    restarted is the configuration applied. Because of this, the rollout isn’t health based and can be ad hoc or random.
+
+    + Changing ConfigMaps Best practice :
+      A better approach is to put a version number in the name of the ConfigMap itself. Instead of calling it frontend-config,
+      call it frontend-config-v1. When you want to make a change, instead of updating the ConfigMap in place, you create a
+      new v2 ConfigMap, and then update the Deployment resource to use that configuration. When you do this, a Deployment
+      rollout is automatically triggered, using the appropriate health checking and pauses between changes.
+      thermore, if you ever need to rollback, the v1 configuration is sitting in the cluster and rollback is
+      as simple as updating the Deployment again.
+
+
+    + create a secret to limit access to redis :
+    $ kubectl create secret generic redis-passwd --from-literal=passwd=${RANDOM}
+
+    $ vi frontend.yml
+    $ add this to the deployment (we should mount a volume to persiste secrets)
+        volumeMounts:
+          - name: passwd-volume
+            readOnly: true
+            mountPath: "/etc/redis-passwd
+        ...
+        volumes:
+        - name: passwd-volume
+          secret:
+            secretName: redis-passwd
+
+    $ kubectl apply -f .
+
+    + Deploying a Simple Stateful Database :
+    Although conceptually deploying a stateful application is similar to deploying a client like our frontend, state brings with it more complications.
+    The first is that in Kubernetes a pod can be rescheduled for a number of reasons, such as node health, an upgrade, or rebalancing. When this happens,
+    the pod might move to a different machine. If the data associated with the Redis instance is located on any particular machine or within the container itself,
+    that data will be lost when the container migrates or restarts. To prevent this, when running stateful workloads in Kubernetes its important to use remote
+    PersistentVolumes to manage the state associated with the application.
+
+    There is a wide variety of different implementations of PersistentVolumes in Kubernetes, but they all share common characteristics. Like secret volumes
+    described earlier, they are associated with a pod and mounted into a container at a particular location. Unlike secrets, PersistentVolumes are generally
+    remote storage mounted through some sort of network protocol, either file based, such as Network File System (NFS) or Server Message Block (SMB), or block based
+    (iSCSI, cloud-based disks, etc.). Generally, for applications such as databases, block-based disks are preferable[…]”
+
+    $ kubectl apply -f redis-statfulset.yml
+
+    # to push secret to every redis replica (redis-0, redis-1, redis-2)
+    $ kubectl create configmap redis-config --from-file=redis-launch.sh
+
+    + You then add this ConfigMap to your StatefulSet and use it as the command for the container.
+      Let’s also add in the password for authentication that we created earlier in the chapter.
+
+         volumeMounts:
+                  - name: data
+                    mountPath: /data
+                  - name: script
+                    mountPath: /script/redis-launch.sh
+                    subPath: redis-launch.sh
+                  - name: passwd-volume
+                    mountPath: /etc/redis-passwd
+                  command:
+                    - sh
+                    - -c
+                    - /script/redis-launch.sh
+                  volumes:
+                    - name: script
+                      configMap:
+                        name: redis-config
+                        defaultMode: 0777
+                    - name: passwd-volume
+                      secret:
+                        secretName: redis-passwd
+                  volumeClaimTemplates:
+                    - metadata:
+                        name: data
+                      spec:
+                        accessModes: [ "ReadWriteOnce" ]
+                        resources:
+                          requests:
+                            storage: 10Gi
+
+    $ kubectl apply -f redis-statfulset.yml
+
+    + Creating a TCP Load Balancer by Using Services :
+
+    - Redis read config (check services.yml)
+      Now that we’ve deployed the stateful Redis service, we need to make it available to our frontend.
+      To do this, we create two different Kubernetes Services. The first is the Service for reading data
+      from Redis. Because Redis is replicating the data to all three members of the StatefulSet,
+      we don’t care which read our request goes to. Consequently, we use a basic Service for the reads:
+
+    - Redis write config (check services.yml)
+
+      To enable writes, you need to target the Redis master (replica #0). To do this, create a headless Service.
+      A headless Service doesn’t have a cluster IP address; instead, it programs a DNS entry for every pod
+      in the StatefulSet. This means that we can access our master via the redis-0.redis DNS name:
+
+    + Using Ingress to Route Traffic to a Static File Server
+    The final component in our application is a static file server. The static file server is responsible for serving HTML, CSS, JavaScript, and image files.
+    It’s both more efficient and more focused for us to separate static file serving from our API serving frontend described earlier.
+    We can easily use a high-performance static off-the-shelf file server like NGINX to serve files while we allow our development teams to focus on the code
+    needed to implement our API.
+
+    $ kubectl create configmap redis-config --from-file=redis-launch.sh
+
+
+    + Deploying Services Best Practices :
+
+    Kubernetes is a powerful system that can seem complex. But setting up a basic application for success can be straightforward if you use the following best practices:
+    Most services should be deployed as Deployment resources. Deployments create identical replicas for redundancy and scale.
+    Deployments can be exposed using a Service, which is effectively a load balancer. A Service can be exposed either within a cluster (the default) or externally.
+    If you want to expose an HTTP application, you can use an Ingress controller to add things like request routing and SSL.
+    Eventually you will want to parameterize your application to make its configuration more reusable in different environments. Packaging tools like Helm are the best
+    choice for this kind of parameterization.
+
+

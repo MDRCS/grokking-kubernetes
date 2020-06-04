@@ -1,0 +1,21 @@
+apiVersion: networking.k8s.io/v1beta1
+kind: Ingress
+metadata:
+  name: frontend-ingress
+spec:
+  rules:
+    - host: journal.com
+      http:
+        paths:
+          - path: /api
+            backend:
+              serviceName: frontend
+              servicePort: 8080
+          # NOTE: this should come after /api or else it will hijack requests
+          - path: /
+            backend:
+              serviceName: fileserver
+              servicePort: 80
+
+
+

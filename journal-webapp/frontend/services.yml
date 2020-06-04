@@ -1,0 +1,18 @@
+# Front-end node.js server is service
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    run: frontend
+  name: frontend
+  namespace: default
+spec:
+  ports:
+  - port: 8080
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    run: frontend
+  type: ClusterIP
+
+

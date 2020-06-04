@@ -1,0 +1,38 @@
+# Redis Read Service - we don't care from which redis replica the client will read, the data is shared between the 3 replicas
+
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: redis
+  name: redis
+  namespace: default
+spec:
+  ports:
+  - port: 6379
+    protocol: TCP
+    targetPort: 6379
+  selector:
+    app: redis
+  sessionAffinity: None
+  type: ClusterIP
+
+
+---
+
+# Redis Write Service - The service should point to the primary replicas to write it could be redis-0.
+# Headless service is a service that doesn't have an ClusterIP instead, it programs a DNS entry for every pod
+# in the StatefulSet. This means that we can access our master via the redis-0.redis DNS name:
+
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: redis-write
+  name: redis-write
+spec:
+  clusterIP: None
+  ports:
+  - port: 6379
+  selector:
+    app: redis
