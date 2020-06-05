@@ -2482,4 +2482,21 @@
     $ netstat -a -n | grep tcp | grep 9200
 
 
+    Alerting :
 
+    - An example would be generating an alert any time a pod fails.
+    - if your SLO for a frontend service is a 20-ms response time and
+      you are seeing higher latency than average, you want to be alerted on the problem.
+
+    - One way to handle alerts that don’t need immediate action is to focus on automating the remediation of the cause.
+      For example, when a disk fills up, you could automate the deletion of logs to free up space on the disk. Also,
+      utilizing Kubernetes liveness probes in your app deployment can help autoremediate issues with a process that
+      is not responding in the application.
+
+    - You also need to build notification channels to route alerts that are fired. When thinking about
+     “Who do I notify when an alert is triggered?” you should ensure that notifications are not just sent
+     to a distribution list or team emails. What tends to happen if alerts are sent to larger groups is that
+     they end up getting filtered out because users see these as noise. You should route notifications to the
+     user who is going to take responsibility for the issue.
+
+    - Philosophy of alerting : https://docs.google.com/document/d/199PqyG3UsyXlwieHaqbGiWVa8eMWi8zzAn0YfcApr8Q/edit
