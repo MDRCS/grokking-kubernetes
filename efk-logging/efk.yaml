@@ -72,7 +72,7 @@ metadata:
 apiVersion: v1
 data:
   fluent-bit-filter.conf: "[FILTER]\n    Name                kubernetes\n    Match
-    \              kube.*\n    Kube_URL            https://kubernetes.default.svc:443\n
+    \              kube.*\n    Kube_URL            https://kubernetes.default.svc:80\n
     \   Kube_CA_File        /var/run/secrets/kubernetes.io/serviceaccount/ca.crt\n
     \   Kube_Token_File     /var/run/secrets/kubernetes.io/serviceaccount/token\n
     \   Merge_Log           On\n    K8S-Logging.Parser  On\n    K8S-Logging.Exclude
@@ -106,8 +106,9 @@ metadata:
 apiVersion: v1
 data:
   kibana.yml: |
-    elasticsearch.url: http://elasticsearch:9200
-    server.host: "0"
+    elasticsearch.url: http://127.0.0.1:9200/
+    elasticsearch.ssl.verificationMode: none
+    server.host: "0.0.0.0"
     server.name: kibana
 kind: ConfigMap
 metadata:
@@ -136,7 +137,7 @@ metadata:
   name: efk-kibana
 spec:
   ports:
-  - port: 443
+  - port: 80
     protocol: TCP
     targetPort: 5601
   selector:
@@ -165,7 +166,7 @@ spec:
       containers:
       - env:
         - name: ELASTICSEARCH_URL
-          value: http://elasticsearch-efk-cluster:9200
+          value: http://127.0.0.1:9200/
         - name: LOGGING_VERBOSE
           value: "true"
         - name: SERVER_DEFAULTROUTE
@@ -235,71 +236,39 @@ spec:
 apiVersion: enterprises.upmc.com/v1
 kind: ElasticsearchCluster
 metadata:
-  name: example-es-cluster
+  labels:
+    app: elasticsearch
+    chart: elasticsearch-0.1.6
+    heritage: Tiller
+    release: efk
+  name: efk-cluster
 spec:
-  kibana:
-    image: docker.elastic.co/kibana/kibana-oss:6.1.3
-    image-pull-policy: Always
-  cerebro:
-    image: upmcenterprises/cerebro:0.7.2
-    image-pull-policy: Always
-  elastic-search-image: upmcenterprises/docker-elasticsearch-kubernetes:6.1.3_0
-  image-pull-policy: Always
+  client-java-options: -Xms1024m -Xmx1024m
   client-node-replicas: 1
-  master-node-replicas: 1
+  data-java-options: -Xms2048m -Xmx2048m
   data-node-replicas: 1
-  network-host: 0.0.0.0
-  zones: []
   data-volume-size: 10Gi
-  master-volume-size: 10Gi
-  java-options: "-Xms512m -Xmx512m"
+  elastic-search-image: quay.io/pires/docker-elasticsearch-kubernetes:6.4.2
+  master-java-options: -Xms2048m -Xmx2048m
+  master-node-replicas: 1
+  network-host: 0.0.0.0
+  resources:
+    limits:
+      cpu: "1"
+      memory: 2048Mi
+    requests:
+      cpu: 200m
+      memory: 1024Mi
   snapshot:
-    scheduler-enabled: false
-    bucket-name: elasticsnapshots99
-    cron-schedule: "@every 2m"
-    image: upmcenterprises/elasticsearch-cron:0.0.4
+    bucketName: elasticsnapshots
+    enabled: false
+    schedule: '@every 2m'
   storage:
-    type: standard
-    storage-class-version: volume.alpha.kubernetes.io/storage-class
-    volume-reclaim-policy: Delete
-#apiVersion: enterprises.upmc.com/v1
-#kind: ElasticsearchCluster
-#metadata:
-#  app: elasticsearch
-#spec:
-#  kibana:
-#    image: docker.elastic.co/kibana/kibana-oss:6.1.3
-#    image-pull-policy: Always
-#  cerebro:
-#    image: upmcenterprises/cerebro:0.7.2
-#    image-pull-policy: Always
-#  elastic-search-image: upmcenterprises/docker-elasticsearch-kubernetes:6.1.3_0
-#  image-pull-policy: Always
-#  client-node-replicas: 1
-#  master-node-replicas: 1
-#  data-node-replicas: 1
-#  network-host: 0.0.0.0
-#  zones: []
-#  data-volume-size: 10Gi
-#  master-volume-size: 10Gi
-#  java-options: "-Xms2048m -Xmx2048m"
-#  snapshot:
-#    scheduler-enabled: false
-#    bucket-name: elasticsnapshots
-#    cron-schedule: "@every 2m"
-#    image: upmcenterprises/elasticsearch-cron:0.0.4
-#  storage:
-#    type: gp2
-#    classProvisioner: volume.alpha.kubernetes.io/storage-class
-#    reclaimPolicy: Delete
-#  resources:
-#    limits:
-#      cpu: "1"
-#      memory: 2048Mi
-#    requests:
-#      cpu: 200m
-#      memory: 1024Mi
-#  use-ssl: false
+    classProvisioner: volume.alpha.kubernetes.io/storage-class
+    reclaimPolicy: Delete
+    type: gp2
+  use-ssl: false
+  zones: []
 ---
 apiVersion: apps/v1
 kind: DaemonSet

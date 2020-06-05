@@ -2452,14 +2452,9 @@
     There is no one correct answer, so evaluate whether your business requirements need you to host your own solution. There are also a number of
 
     - Setup EFK on your Cluster :
-      check config files source -> https://github.com/upmc-enterprises/elasticsearch-operator/tree/master/example
+      check config files source -> https://github.com/upmc-enterprises/elasticsearch-operator -> example (efk stack)
 
     !IMPORTANT Putting EFK Stack in the same namespace is a rule.
-
-    - prerequisites - K8 API Version v1.13.3
-        curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.13.3/bin/darwin/amd64/kubectl
-        chmod +x ./kubectl
-        sudo mv ./kubectl /usr/local/bin/kubectl
 
     $ cd efk-logging
     $ kubectl create namespace logging
@@ -2470,7 +2465,21 @@
     # you can check the new one with this command
     $ kubectl api-resources | grep -i daemon
 
+    $ kubectl get pods -n logging
 
+    # Let's connect to Kibana thought port forwarding
+
+    $ export POD_NAME=$(kubectl get pods --namespace logging -l "app=kibana,release=efk" -o jsonpath="{.items[0].metadata.name}")
+    $ kubectl port-forward $POD_NAME -n logging 5601:5601
+    $ kubectl port-forward elasticsearch-operator-566d9c948b-p9ncx  -n logging 9200:9200
+
+    #  Prob 1 :
+    - Unable to connect to Elasticsearch at http://elasticsearch-efk-cluster:9200/
+
+    #solution :
+    - go to efk.yaml -> change elasticsearch.url from http://elasticsearch-efk-cluster:9200/ to http://127.0.0.1:9200
+
+    $ netstat -a -n | grep tcp | grep 9200
 
 
 
