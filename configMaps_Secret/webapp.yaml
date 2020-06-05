@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mywebapp
+  namespace: myapp-prod
+spec:
+  containers:
+  - name: nginx
+    image: nginx
+    ports:
+    - containerPort: 8080
+    volumeMounts:
+    - mountPath: /etc/nginx
+      name: nginx-config
+    - mountPath: /usr/var/nginx/html/keys
+      name: api-key
+  volumes:
+    - name: nginx-config
+      configMap:
+        name: nginx-http-config
+        items:
+        - key: config
+          path: nginx.conf
+    - name: api-key
+      secret:
+        name: myapp-api-key
+        secretname: myapikey

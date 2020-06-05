@@ -2500,3 +2500,197 @@
      user who is going to take responsibility for the issue.
 
     - Philosophy of alerting : https://docs.google.com/document/d/199PqyG3UsyXlwieHaqbGiWVa8eMWi8zzAn0YfcApr8Q/edit
+
+### + Configuration, Secrets, and RBAC
+
+    + Example in ./configMaps_Secret is of creating a configmap and secret as volume.
+      Each property name in the ConfigMap/Secret will become a new file in the mounted directory,
+      and the contents of each file will be the value specified in the ConfigMap/Secret. Second,
+      avoid mounting ConfigMaps/Secrets using the volumeMounts.subPath property. This will prevent
+      the data from being dynamically updated in the volume if you update a ConfigMap/Secret with new data.
+
+### + Continuous Integration, Testing, and Deployment
+
+    + We will go through an example CI/CD pipeline, which consists of the following tasks:
+        - Pushing code changes to the Git repository
+        - Running a build of the application code
+        - Running test against the code
+        - Building a container image on a successful test
+        - Pushing the container image to a container registry
+        - Deploying the application to Kubernetes
+        - Running a test against a deployed application
+        - Performing rolling upgrades on Deployments
+
+    - Optimized base images
+    These are images that focus on removing the cruft out of the OS layer and provide a slimmed-down image. For example,
+    Alpine provides a base image that starts at just 10 MB, and it also allows you to attach a local debugger for local development.
+    Other distros also typically offer an optimized base image, such as Debian’s Slim image. This might be a good option for you
+    because its optimized images give you capabilities you expect for development while also optimizing for image size and lower security exposure.
+    Optimizing your images is extremely important and often overlooked by users. You might have reasons due to company standards for OSes
+    that are approved for use in the enterprise, but push back on these so that you can maximize the value of containers.
+
+    - Container Image Tagging
+    Another step in the CI pipeline is to build a Docker image so that you have an image artifact to deploy to an environment.
+    It’s important to have an image tagging strategy so that you can easily identify the versioned images you have deployed
+    to your environments. One of the most important things we can’t preach enough about is not to use “latest” as an image tag.
+    Using that as an image tag is not a version and will lead to not having the ability to identify what code change belongs to
+    the rolled-out image. Every image that is built in the CI pipeline should have a unique tag for the built image.
+
+    + Tagging Strategies :
+
+        BuildID
+        When a CI build kicks off, it has a buildID associated with it. Using this part of the tag allows you to reference which build assembled the image.
+
+        Build System-BuildID
+        This one is the same as BuildID but adds the Build System for users who have multiple build systems.
+
+        Git Hash
+        On new code commits, a Git hash is generated, and using the hash for the tag allows you to easily reference which commit generated the image.
+
+        githash-buildID
+        This allows you to reference both the code commit and the buildID that generated the image. The only caution here is that the tag can be kind of long.
+
+    + Deployement Strategies :
+        Rolling updates
+        Blue/green deployments
+        Canary deployments
+
+    - Rolling updates are built into Kubernetes and allow you to trigger an update to the currently running application without downtime.
+      For example, if you took your frontend app that is currently running frontend:v1 and updated the Deployment to frontend:v2, Kubernetes
+      would update the replicas in a rolling fashion to frontend:v2. Figure below depicts a rolling update.
+
+![](./static/rolling_update.png)
+
+    - A Deployment object also lets you configure the maximum amount of replicas to be updated and the maximum unavailable pods during the rollout.
+    - You need to be cautious with rolling updates because using this strategy can cause dropped connections. To deal with this issue, you can utilize readiness probes and preStop life cycle hooks.
+
+    - Blue/green deployments allow you to release your application in a predictable manner. With blue/green deployments, you control when the traffic
+      is shifted over to the new environment, so it gives you a lot of control over the rollout of a new version of your application.
+      With blue/green deployments, you are required to have the capacity to deploy both the existing and new environment at the same time.
+      These types of deployments have a lot of advantages, such as easily switching back to your previous version of the application.
+      There are some things that you need to consider with this deployment strategy, however:
+
+        + Database migrations can become difficult with this deployment option because you need to consider in-flight transactions
+        and schema update compatibility.
+
+        + There is the risk of accidental deletion of both environments.
+        + You need extra capacity for both environments.
+        + There are coordination issues for hybrid deployments in which legacy apps can’t handle the deployment.
+
+       Figure below depicts a blue/green deployment.
+
+![](./static/canary_deployment.png)
+
+    - NOTE
+      Canary releases also suffer from having multiple versions of the application running at the same time. Your database schema needs
+      to support both versions of the application. When using these strategies, you’ll need to really focus on how to handle dependent
+      services and having multiple versions running. This includes having strong API contracts and ensuring that your data services
+      support the multiple versions you have deployed at the same time.
+
+    + Testing in Production tools :
+      distributed tracing, instrumentation, chaos engineering, and traffic shadowing. To recap, here are the tools we have already mentioned:
+        Canary deployments
+        A/B testing
+        Traffic shifting
+        Feature flags
+
+    - Chaos engineering was developed by Netflix. It is the practice of deploying experiments into live production systems to discover weaknesses
+      within those systems. Chaos engineering allows you to learn about the behavior of your system by observing it during a controlled experiment.
+
+     + Setting Up a Pipeline and Performing a Chaos Experiment
+
+    $ repo /chaos_engineering
+    $ go to drone.io -> create an account -> choose /chaos_engineering repo
+
+    # configure drone.io to push images to dockerhub and kubernetes
+    1- first step is to configure this secrets :
+        docker_username -> mdrahali
+        docker_password -> ******
+        kubernetes_server -> kubectl cluster-info (Kubernetes master is running https://192.168.64.11:8443)
+        kubernetes_cert -> Step 2 ( generating certificate)
+        kubernetes_token -> step 2 ( $TOKEN )
+
+    2- create a service for drone.io
+       $ kubectl create serviceaccount drone
+
+        - Now use the following command to create a clusterrolebinding for the serviceaccount:
+        kubectl create clusterrolebinding drone-admin \
+          --clusterrole=cluster-admin \
+          --serviceaccount=default:drone
+
+        Next, retrieve your serviceaccount token:
+        TOKENNAME=`kubectl -n default get serviceaccount/drone -o jsonpath='{.secrets[0].name}'`
+        TOKEN=`kubectl -n default get secret $TOKENNAME -o jsonpath='{.data.token}' | base64 -D`
+        echo $TOKEN
+
+    + You’ll want to store the output of the token in the kubernetes_token secret.
+
+    - You will also need the user certificate to authenticate to the cluster, so use the following command and paste the ca.crt for the kubernetes_cert secret:
+
+    $ kubectl get secret $TOKENNAME -o yaml | grep 'ca.crt:'
+
+    3- Now, build your app in a Drone pipeline and then push it to Docker Hub.
+        The first step is the build step, which will build your Node.js frontend. Drone utilizes container images to run its steps, which gives you a
+        lot of flexibility in what you can do with it. For the build step, use a Node.js image from Docker Hub:
+
+        look at the file ./drone.yaml
+
+        pipeline:
+          build:
+            image: node
+            commands:
+              - cd frontend
+              - npm i redis --save
+
+    When the build completes, you’ll want to test it, so we include a test step, which will run npm against the newly built app:
+    test:
+        image: node
+        commands:
+          - cd frontend
+          - npm i redis --save
+          - npm test
+
+    Now that you have successfully built and tested your app, you next move on to a publish step to create a Docker image of the app and push it to Docker Hub.
+    In the .drone.yml file, make the following code change:
+    repo: <your-registry>/frontend
+
+    publish:
+        image: plugins/docker
+        dockerfile: ./frontend/Dockerfile
+        context: ./frontend
+        repo: mdrahali/frontend
+        tags: [latest, v2]
+        secrets: [ docker_username, docker_password ]
+
+    After the Docker build step finishes, it will push the image to your Docker registry.
+
+![](./static/drone.io.png)
+
+    # when deployment is finished :
+    $ kubectl get pods
+
+    - A Simple Chaos Experiment :
+
+    There are a variety of tools in the Kubernetes ecosystem that can help with performing chaos experiments in your environment. They range from sophisticated hosted Chaos as a Service solutions to basic chaos experiment tools that kill pods in your environment. Following are some of the tools with which we’ve seen users have success:
+
+    Gremlin
+    Hosted chaos service that provides advanced features for running chaos experiments
+
+    PowerfulSeal
+    Open source project that provides advanced chaos scenarios
+
+    Chaos Toolkit
+    Open source project with a mission to provide a free, open, and community-driven toolkit and API to all the various forms of chaos engineering tools
+
+    KubeMonkey
+    Open source tool that provides basic resiliency testing for pods in your cluster.
+
+    - Let’s set up a quick chaos experiment to test the resiliency of your application by automatically terminating pods.
+      For this experiment, we’ll use Chaos Toolkit:
+
+        pip3 install -U chaostoolkit
+        pip3 install chaostoolkit-kubernetes
+        //export FRONTEND_URL="http://$(kubectl get svc frontend -o jsonpath="{.status.loadBalancer.ingress[*].ip}"):8080/api/"
+        export FRONTEND_URL=http://journal.com/api
+        chaos run experiment.json
+

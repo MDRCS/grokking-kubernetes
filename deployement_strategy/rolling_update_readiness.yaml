@@ -1,0 +1,26 @@
+kind: Deployment
+apiVersion: v1
+metadata:
+  name: frontend
+spec:
+  replicas: 3
+  template:
+    spec:
+      containers:
+      - name: frontend
+        image: brendanburns/frontend:v1
+        livenessProbe:
+          # ...
+        readinessProbe:
+          httpGet:
+            path: /readiness # probe endpoint
+            port: 8888
+        lifecycle:
+          preStop:
+            exec:
+              command: ["/usr/sbin/nginx","-s","quit"]
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1 # Maximum amount of replicas to update at one time
+      maxUnavailable: 1 # Maximum amount of replicas unavailable during rollout
