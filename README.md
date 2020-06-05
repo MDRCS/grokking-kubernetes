@@ -1934,6 +1934,10 @@
     We’ll use Labels to direct the Service to the pods that we created in the previous section. The Service is significantly
     simpler to define than the Deployment and looks as follows:
 
+    # first step is to enable ingress in minikube
+    $ minikube addons list
+    $ minikube addons enable ingress
+    $ minikube addons enable ingress-dns
 
     $ kubectl apply -f services.yml
     $ kubectl apply -f ingress-lb.yml
@@ -2208,5 +2212,265 @@
     When managing namespaces, think about how you can reap old, unused resources. Developers will have bad hygiene about deleting unused things. Use automation to clean it up for them.
     Think about cluster-level services like logs and monitoring that you can set up for all users. Sometimes, cluster-level dependencies like databases are also useful to set up on behalf
     of all users using templates like Helm charts.
+
+### + Monitoring and Logging in Kubernetes
+
+
+    - Metrics Versus Logs :
+    You first need to understand the difference between log collection and metrics collection.
+    They are complementary to each other but serve different purposes.
+
+    + Metrics :
+    A series of numbers measured over a period of time
+
+    + Logs :
+    Used for exploratory analysis of a system
+    An example of where you would need to use both metrics and logging is when an application is performing poorly.
+    Our first indication of the issue might be an alert of high latency on the pods hosting the application,
+    but the metrics might not give a good indication of the issue. We then can look into our logs to perform an
+    investigation of errors that are being emitted from the application.
+
+    - Monitoring Techniques :
+    Black-box monitoring focuses on monitoring from the outside of an application and is what’s been used traditionally when monitoring systems for components
+    like CPU, memory, storage, and so on. Black-box monitoring can still be useful for monitoring at the infrastructure level, but it lacks insights and context
+    into how the application is operating. For example, to test whether a cluster is healthy, we might schedule a pod, and if it’s successful, we know that the
+    scheduler and service discovery are healthy within our cluster, so we can assume the cluster components are healthy.
+    White-box monitoring focuses on the details in the context of the application state, such as total HTTP requests, number of 500 errors, latency of requests,
+    and so on. With white-box monitoring, we can begin to understand the “Why” of our system state. It allows us to ask, “Why did the disk fill up?” and not just,
+    “The disk filled up.”
+
+    + There are a couple of different monitoring patterns to focus on when monitoring distributed systems.
+    The USE method, popularized by Brendan Gregg, focuses on the following:
+
+        U—Utilization
+        S—Saturation
+        E—Errors
+
+    + Another monitoring approach, called the RED method, was popularized by Tom Willke. The RED method approach is focused on the following:
+        R—Rate
+        E—Errors
+        D—Duration
+
+    + The philosophy was taken from Google’s Four Golden Signals:
+        Latency (how long it takes to serve a request)
+        Traffic (how much demand is placed on your system)
+        Errors (rate of requests that are failing)
+        Saturation (how utilized your service is)
+
+    As an example, you could use this method to monitor a frontend service running in Kubernetes to calculate the following:
+        How many requests is my frontend service processing?
+        How many 500 errors are users of the service receiving?
+        Is the service overutilized by requests?
+
+    As you can see from the previous example, this method is more focused on the experience of the users and their experience with the service.
+    The USE and RED methods are complementary to each other given that the USE method focuses on the infrastructure components and the RED method
+    focuses on monitoring the end-user experience for the application.
+
+    + Monititoring your kuberenetes cluster :
+    monitoring in your Kubernetes cluster. A Kubernetes cluster consists of control-plane components and worker-node components.
+    The control-plane components consist of the API Server, etcd, scheduler, and controller manager. The worker nodes consist of the kubelet,
+    container runtime, kube-proxy, kube-dns, and pods. You need to monitor all these components to ensure a healthy cluster and application.
+
+    +cAdvisor
+    Container Advisor, or cAdvisor, is an open source project that collects resources and metrics for containers running on a node.
+    cAdvisor is built into the Kubernetes kubelet, which runs on every node in the cluster. It collects memory and CPU metrics through
+    the Linux control group (cgroup) tree. If you are not familiar with cgroups, it’s a Linux kernel feature that allows isolation of
+    resources for CPU, disk I/O, or network I/O. cAdvisor will also collect disk metrics through statfs, which is built into the Linux kernel.
+    These are implementation details you don’t really need to worry about, but you should understand how these metrics are exposed and the
+    type of information you can collect. You should consider cAdvisor as the source of truth for all container metrics.
+
+    + kube-state-metrics:
+
+    kube-state-metrics is a Kubernetes add-on that monitors the object stored in Kubernetes. Where cAdvisor and metrics server are used to
+    provide detailed metrics on resource usage, kube-state-metrics is focused on identifying conditions on Kubernetes objects deployed to your cluster.
+    Following are some questions that kube-state-metrics can answer for you:
+
+    Pods
+    How many pods are deployed to the cluster?
+    How many pods are in a pending state?
+    Are there enough resources to serve a pods request?
+
+    Deployments
+    How many pods are in a running state versus a desired state?
+    How many replicas are available?
+    What deployments have been updated?
+
+    Nodes
+    What’s the status of my worker nodes?
+    What are the allottable CPU cores in my cluster?
+    Are there any nodes that are unschedulable?
+
+    Jobs
+    When did a job start?
+    When did a job complete?
+    How many jobs failed?
+
+
+    + Monitoring Tools :
+    There are many monitoring tools that can integrate with Kubernetes, and more arriving every day, building on their feature set to have better
+    integration with Kubernetes. Following are a few popular tools that integrate with Kubernetes:
+
+    Prometheus
+    Prometheus is an open source systems monitoring and alerting toolkit originally built at SoundCloud. Since its inception in 2012,
+    many companies and organizations have adopted Prometheus, and the project has a very active developer and user community. It is now a
+    standalone open source project and maintained independent of any company. To emphasize this, and to clarify the project’s governance structure,
+    Prometheus joined the Cloud Native Computing Foundation (CNCF) in 2016 as the second hosted project, after Kubernetes.
+
+    InfluxDB
+    InfluxDB is a time-series database designed to handle high write and query loads. It is an integral component of the TICK (Telegraf, InfluxDB, Chronograf, and Kapacitor)
+    stack. InfluxDB is meant to be used as a backing store for any use case involving large amounts of timestamped data, including DevOps monitoring, application metrics,
+    IoT sensor data, and real-time analytics.
+
+    Datadog
+    Datadog provides a monitoring service for cloud-scale applications, providing monitoring of servers, databases, tools, and services through a SaaS-based data analytics platform.
+
+    + Monitoring Kubernetes Using Prometheus :
+
+     To collect metrics, Prometheus uses a pull model in which it scrapes a metrics endpoint to collect and ingest the metrics into the Prometheus server.
+     Systems like Kubernetes already expose their metrics in a Prometheus format, making it simple to collect metrics. Many other Kubernetes ecosystem
+     projects (NGINX, Traefik, Istio, LinkerD, etc.) also expose their metrics in a Prometheus format. Prometheus also can use exporters, which
+     allow you to take emitted metrics from your service and translate them to Prometheus-formatted metrics.
+
+![](./static/prometheus_architecture.png)
+
+    #TIP
+    You can install Prometheus within the cluster or outside the cluster. It’s a good practice to monitor your cluster from a “utility cluster”
+    to avoid a production issue also affecting your monitoring system. There are tools like Thanos that provide high availability for Prometheus
+    and allow you to export metrics into an external storage system.
+
+    In this chapter we install the Prometheus Operator:
+
+    - Prometheus Server :
+    Pulls and stores metrics being collected from systems.
+
+    - Prometheus Operator :
+    Makes the Prometheus configuration Kubernetes native, and manages and operates Prometheus and Alertmanager clusters. Allows you to create, destroy, and configure Prometheus resources through native Kubernetes resource definitions.
+
+    - Node Exporter :
+    Exports host metrics from Kubernetes nodes in the cluster.
+
+    - kube-state-metrics :
+    Collects Kubernetes-specific metrics.
+
+    - Alertmanager :
+    Allows you to configure and forward alerts to external systems.
+
+    - Grafana :
+    Provides visualization on dashboard capabilities for Prometheus.
+
+    $ helm repo update
+    $ helm install prom stable/prometheus-operator
+    $ kubectl --namespace default get pods -l "release=prom"
+    $ kubectl get pods
+
+    # let's take a look at prometeus server to see how you can run some queries
+      to retreive kubernetes metrics :
+
+    # Create a tunnel to our localhost on port 9090
+    $ kubectl port-forward svc/prom-prometheus-operator-prometheus 9090
+    $ check -> 127.0.0.1:9090
+
+    # we will explore metrics with USE method (Utilization, Saturation, Error) on CPU :
+    #Query Language of Prometeus is PromQL :
+
+    # Average CPU Utilization on the cluster :
+    $ avg(rate(node_cpu_seconds_total[5m]))
+
+    # Average CPU Utilization per Node | it will return one value because Minikube VM is one node:
+    $ avg(rate(node_cpu_seconds_total[5m])) by (node_name)
+
+    + You’ll now need to create a port-forward tunnel to the Grafana pod so that you can access it from your local machine:
+    $ kubectl port-forward svc/prom-grafana 3000:80
+    $ check -> 127.0.0.1:3000
+
+    # to get the password go to this link -> https://github.com/helm/charts/tree/master/stable/prometheus-operator
+    # go to `Grafana` and search for `grafana.adminPassword`.
+    # login admin/prom-operator
+
+    # next, Click on Home choose `USE Method/Cluster` This dashboard gives you a good overview of
+      the utilization and saturation of the kubernetes Cluster.
+
+    # Stress CPU with request
+    $ for ((i=1;i<=100000;i++)); do curl http://journal.com/api; echo ; done
+
+
+    #TIP
+    Avoid creating too many dashboards (aka “The Wall of Graphs”) because this can be difficult for engineers to reason with in troubleshooting situations.
+    You might think having more information in a dashboard means better monitoring, but the majority of the time it causes more confusion for a user looking at the dashboard.
+    Focus your dashboard design on outcomes and time to resolution.
+
+    + Logging Overview :
+
+    you also need to collect and centralize logs from the Kubernetes cluster and the applications deployed to your cluster.
+    - With logging, it might be easy to say, “Let’s just log everything,” but this can cause two issues:
+
+    1- There is too much noise to find issues quickly.
+    2- Logs can consume a lot of resources and come with a high cost.
+
+    There is no clear-cut answer to what exactly you should log because debug logs become a necessary evil.
+    Over time you’ll start to understand your environment better and learn what noise you can tune out from the logging system.
+    Also, to address the ever-increasing amount of logs stored, you will need to implement a retention and archival policy.
+    From an end-user experience, having somewhere between 30 and 45 days worth of historical logs is a good fit.
+    This allows for investigation of problems that manifest over a longer period of time, but also reduces the amount
+    of resources needed to store logs. If you require longer-term storage for compliance reasons, you’ll want to archive the logs
+    to more cost-effective resources.
+    In a Kubernetes cluster, there are multiple components to log.
+    Following is a list of components from which you should be collecting metrics:
+
+    - Node logs
+    - Kubernetes, control-plane, logs
+
+    - API server
+    - Controller manager
+    - Scheduler
+    - Kubernetes audit logs
+    - Application container logs
+
+    - Tools for Logging :
+    Like collecting metrics there are numerous tools to collect logs from Kubernetes and applications running in the cluster.
+    You might already have tooling for this, but be aware of how the tool implements logging. The tool should have
+    the capability to run as a Kubernetes DaemonSet and also have a solution to run as a sidecar for applications
+    that don’t send logs to STDOUT. Utilizing an existing tool can be advantageous because you will already
+    have a lot of operational knowledge of the tool.
+
+    + Some of the more popular tools with Kubernetes integration are:
+        Elastic Stack
+        Datadog
+        Sumo Logic
+        Sysdig
+        Cloud provider services (GCP Stackdriver, Azure Monitor for containers, and Amazon CloudWatch)
+
+    When looking for a tool to centralize logs, hosted solutions can provide a lot of value because they offload a lot of the operational
+    cost. Hosting your own logging solution seems great on day N, but as the environment grows, it can be very time consuming
+    to maintain the solution.
+
+    - Logging by Using an EFK Stack :
+    For the purposes of this book, we use an Elasticsearch, Fluentd, and Kibana (EFK) stack to set up monitoring for our cluster.
+    Implementing an EFK stack can be a good way to get started, but at some point you’ll probably ask yourself, “Is it really worth
+    managing my own logging platform?” Typically it’s not worth the effort because self-hosted logging solutions are great on day one,
+    but they become overly complex by day 365. Self-hosted logging solutions become more operationally complex as your environment scales.
+    There is no one correct answer, so evaluate whether your business requirements need you to host your own solution. There are also a number of
+
+    - Setup EFK on your Cluster :
+      check config files source -> https://github.com/upmc-enterprises/elasticsearch-operator/tree/master/example
+
+    !IMPORTANT Putting EFK Stack in the same namespace is a rule.
+
+    - prerequisites - K8 API Version v1.13.3
+        curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.13.3/bin/darwin/amd64/kubectl
+        chmod +x ./kubectl
+        sudo mv ./kubectl /usr/local/bin/kubectl
+
+    $ cd efk-logging
+    $ kubectl create namespace logging
+    $ kubectl apply -f elasticsearch-operator.yaml -n logging
+    $ kubectl apply -f efk.yaml -n logging
+
+    # if you have a apiVersion Problem triggred from an update of k8 api
+    # you can check the new one with this command
+    $ kubectl api-resources | grep -i daemon
+
+
+
 
 
