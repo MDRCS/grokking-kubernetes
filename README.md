@@ -2706,4 +2706,59 @@
       but this usually comes at a much higher cost of both technology and human capital to maintain.
 
 
+### + Pod and Container Security :
 
+    - in Kubernetes API There is two choices :
+    + PodSecurityPolicy and RuntimeClass.
+
+    + PodSecurityPolicy API (Beta vers) :
+      This cluster-wide resource creates a single place to define and manage all of the security-sensitive fields found in pod specifications.
+      Prior to the creation of the PodSecurityPolicy resource, cluster administrators and/or users would need to independently define individual
+      SecurityContext settings for their workloads or enable bespoke admission controllers on the cluster to enforce some aspects of pod security.
+
+    however, strongly suggest taking the time to fully understand PodSecurityPolicy because it’s one of the single most effective means to reduce
+    your attack surface area by limiting what can run on your cluster and with what level of privilege.
+
+    - There are two main components that you need to complete in order to start using PodSecurityPolicy:
+
+    1- Ensure that the PodSecurityPolicy API is enabled
+      (this should already be done if you’re on a currently supported version of Kubernetes).
+        You can confirm that this API is enabled by running `kubectl get psp`. As long as the response
+        isn’t the server doesn't have a resource type "PodSecurityPolicies, you are OK to proceed.
+
+    2- Enable the PodSecurityPolicy admission controller via the api-server flag --enable-admission-plugins.
+
+
+    !WARNING!
+    If you are enabling PodSecurityPolicy on an existing cluster with running workloads, you must create all necessary policies,
+    service accounts, roles, and role bindings before enabling the admission controller.
+
+    We also recommend the addition of the --use-service-account-credentials=true flag to kube-controller-manager,
+    which will enable service accounts to be used for each individual controller within kube-controller-manager.
+    This allows for more granular policy control even within the kube-system namespace. You can simply
+    run the following command to determine whether the flag has been set. It demonstrates that there is
+    indeed a service account per controller:
+
+    $ kubectl get serviceaccount -n kube-system | grep '.*-controller'
+
+    !WARNING!
+    It’s extremely important to remember that having no PodSecurityPolicies defined will result in an implicit deny.
+    This means that without a policy match for the workload, the pod will not be created.
+
+    # Testing PodSecurityPolicy
+    $ cd ./PodSecurityPolicy
+    $ kubectl apply -f pause-deployment.yaml
+
+    + By running the following command, you can verify that you have a Deployment and a corresponding ReplicaSet but NO pod:
+    $ kubectl get deploy,rs,pods -l app=pause
+
+    $ kubectl describe replicaset -l app=pause
+
+    + This is because there are either no pod security policies defined or the service account is not allowed access to use the PodSecurityPolicy.
+    $ kubectl delete deploy -l app=pause
+
+    # now we will define pod security policies :
+    $ kubectl apply -f podsecuritypolicy-1.yaml
+    $ kubectl apply -f podsecuritypolicy-2.yaml
+
+    $ kubectl get psp
