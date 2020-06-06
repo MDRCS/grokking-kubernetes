@@ -3260,7 +3260,124 @@
     the model itself. Open source tools such as Horovod seek to improve distributed training frameworks and provide better model scaling.
 
 
+### + Managing State and Stateful Applications
+
+    - In the early days of container orchestration, the targeted workloads were usually stateless applications that used external systems to store state if necessary.
+      The thought was that containers are very temporal, and orchestration of the backing storage needed to keep state in a consistent manner was difficult at best.
+      Over time the need for container-based workloads that kept state became a reality and, in select cases, might be more performant. Kubernetes adapted over many
+      iterations to not only allow for storage volumes mounted into the pod, but those volumes being managed by Kubernetes directly was an important component in orchestration
+      of storage with the workloads that require it.
+
+    + Volumes and Volume Mounts
+    Not every workload that requires a way to maintain state needs to be a complex database or high throughput data queue service. Often, applications that are being
+    moved to containerized workloads expect certain directories to exist and read and write pertinent information to those directories.
+
+    Every major container runtime, such as Docker, rkt, CRI-O, and even Singularity, allows for mounting volumes into a container that is mapped to an external storage
+    system. At its simplest, external storage can be a memory location, a path on the container’s host, or an external filesystem such as NFS, Glusterfs, CIFS, or Ceph.
+    Why would this be needed, you might wonder? A useful example is that of a legacy application that was written to log application-specific information to a local filesystem.
+    There are many possible solutions including, but not limited to, updating the application code to log out to a stdout or stderr sidecar container that can stream log data
+    to an outside source via a shared pod volume or using a host-based logging tool that can read a volume for both host logs and container application logs. The last scenario
+    can be attained by using a volume mount in the container using a Kubernetes hostPath mount, as shown in the following:
+
+    + Volume Best Practices
+    Try to limit the use of volumes to pods requiring multiple containers that need to share data, for example adapter or ambassador type patterns.
+    Use the emptyDir for those types of sharing patterns.
+    Use hostDir when access to the data is required by node-based agents or services.
+    Try to identify any services that write their critical application logs and events to local disk, and if possible change those to stdout or stderr and let a
+    true Kubernetes-aware log aggregation system stream the logs instead of leveraging the volume map.
+
+    + Kubernetes manages storage for pods using two distinct APIs, the PersistentVolume and PersistentVolumeClaim.
+
+    - PersistentVolume
+    It is best to think of a PersistentVolume as a disk that will back any volumes that are mounted to a pod. A PersistentVolume will have a claim policy
+    that will define the scope of life of the volume independent of the life cycle of the pod that uses the volume. Kubernetes can use either dynamic or
+    statically defined volumes. To allow for dynamically created volumes, there must be a StorageClass defined in Kubernetes. PersistentVolumes can be
+    created in the cluster of varying types and classes, and only when a PersistentVolumeClaim matches the PersistentVolume will it actually be assigned to a
+    pod. The volume itself is backed by a volume plug-in. There are numerous plug-ins supported directly in Kubernetes, and each has different configuration parameters to adjust:
+
+    - PersistentVolumeClaims
+    PersistentVolumeClaims are a way to give Kubernetes a resource requirement definition for storage that a pod will use. Pods will reference the claim, and then
+    if a persistentVolume that matches the claim request exists, it will allocate that volume to that specific pod. At minimum, a storage request size and access
+    mode must be defined, but a specific StorageClass can also be defined. Selectors can also be used to match certain PersistentVolumes that meet a certain criteria will be allocated:
+
+    The preceding claim will match the PersistentVolume created earlier because the storage class name, the selector match, the size, and the access mode are all equal.
+    Kubernetes will match up the PersistentVolume with the claim and bind them together. Now to use the volume, the pod.spec should just reference the claim by name, as follows:
+
+    - Storage Classes
+    Instead of manually defining the PersistentVolumes ahead of time, administrators might elect to create StorageClass objects,
+    which define the volume plug-in to use and any specific mount options and parameters that all PersistentVolumes of that class will use.
+    This then allows the claim to be defined with the specific StorageClass to use, and Kubernetes will dynamically create the PersistentVolume
+    based on the StorageClass parameters and options:
+
+        kind: StorageClass
+        apiVersion: storage.k8s.io/v1
+        metadata:
+        name: nfs
+        provisioner: cluster.local/nfs-client-provisioner
+        parameters:
+          archiveOnDelete: True
+
+    Kubernetes also allows operators to create a default storage class using the DefaultStorageClass admission plug-in. If this has been enabled on the API server,
+    then a default StorageClass can be defined and any PersistentVolumeClaims that do not explicitly define a StorageClass. Some cloud providers will include a default
+    storage class to map to the cheapest storage allowed by their instances.
+
+    Container Storage Interface and FlexVolume
+    Often referred to as “Out-of-Tree” volume plug-ins, the Container Storage Interface (CSI) and FlexVolume enable storage vendors to create custom storage plug-ins
+    without the need to wait for direct code additions to the Kubernetes code base like most volume plug-ins today.
+    The CSI and FlexVolume plug-ins are deployed on Kubernetes clusters as extensions by operators and can be updated by the storage vendors when needed to expose new functionality.
+
+    Kubernetes also allows operators to create a default storage class using the DefaultStorageClass admission plug-in. If this has been enabled on the API server, then a default StorageClass
+    can be defined and any PersistentVolumeClaims that do not explicitly define a StorageClass. Some cloud providers will include a default storage class to map to the cheapest storage allowed by their instances.
+
+    Container Storage Interface and FlexVolume
+    Often referred to as “Out-of-Tree” volume plug-ins, the Container Storage Interface (CSI) and FlexVolume enable storage vendors to create custom storage plug-ins without the need to wait for direct
+    code additions to the Kubernetes code base like most volume plug-ins today.
+    The CSI and FlexVolume plug-ins are deployed on Kubernetes clusters as extensions by operators and can be updated by the storage vendors when needed to expose new functionality.
+
+    Kubernetes Storage Best Practices
+    Cloud native application design principles try to enforce stateless application design as much as possible; however,
+    the growing footprint of container-based services has created the need for data storage persistence. These best practices around storage
+    in Kubernetes in general will help to design an effective approach to providing the required storage implementations to the application design:
+
+    1- If possible, enable the DefaultStorageClass admission plug-in and define a default storage class. Many times,
+       Helm charts for applications that require PersistentVolumes default to a default storage class for the chart,
+       which allows the application to be installed without too much modification.
+    2- When designing the architecture of the cluster, either on-premises or in a cloud provider, take into consideration zone and
+       connectivity between the compute and data layers using the proper labels for both nodes and PersistentVolumes, and using affinity
+       to keep the data and workload as close as possible. The last thing you want is a pod on a node in zone A trying to mount a volume
+       that is attached to a node in zone B.
+    3- Consider very carefully which workloads require state to be maintained on disk. Can that be handled by an outside service like a database system or,
+       if running in a cloud provider, by a hosted service that is API consistent with currently used APIs, say a mongoDB or mySQL as a service?
+
+    4- Determine how much effort would be involved in modifying the application code to be more stateless.
+
+    5- While Kubernetes will track and mount the volumes as workloads are scheduled, it does not yet handle redundancy and backup of the data that is stored
+       in those volumes. The CSI specification has added an API for vendors to plug in native snapshot technologies if the storage backend can support it.
+
+    6- Verify the proper life cycle of the data that volumes will hold. By default the reclaim policy is set to for dynamically provisioned persistentVolumes which
+       will delete the volume from the backing storage provider when the pod is deleted. Sensitive data or data that can be used for forensic analysis should be set to reclaim.
+
+    -> Operators are a great concept in kubernetes basicaly it is an encapsulation of the complex config of stateful tools, ready to setup.
+    https://operatorhub.io/
+
+    TIPS
+
+     -  If a node in the cluster becomes unresponsive, any pods that are part of a StatefulSet are not not automatically deleted; they instead will
+        enter a Terminating or Unkown state after a grace period. The only way to clear this pod is to remove the node object from the cluster, the
+        kubelet beginning to work again and deleting the pod directly, or an Operator force deleting the pod. The force delete should be the
+        last option and great care should be taken that the node that had the deleted pod does not come back online, because there will now
+        be two pods with the same name in the cluster. You can use kubectl delete pod nginx-0 --grace-period=0 --force to force delete the pod.
+
+     -  Even after force deleting a pod, it might stay in an Unknown state, so a patch to the API server will delete the entry and cause the StatefulSet controller
+        to create a new instance of the deleted pod: kubectl patch pod nginx-0 -p '{"metadata":{"finalizers":null}}'.
+
+     -  If you’re running a complex data system with some type of leader election or data replication confirmation processes, use preStop hook to properly close any connections,
+        force leader election, or verify data synchronization before the pod is deleted using a graceful shutdown process.
+
+     -  When the application that requires stateful data is a complex data management system, it might be worth a look to determine whether an Operator exists to help manage
+        the more complicated life cycle components of the application. If the application is built in-house, it might be worth investigating whether it would be useful
+        to package the application as an Operator to add additional manageability to the application. Look at the CoreOS Operator SDK for an example.
 
 
-
+    - Most organizations look to containerize their stateless applications and leave the stateful applications as is.
 
