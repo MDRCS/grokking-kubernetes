@@ -2762,3 +2762,206 @@
     $ kubectl apply -f podsecuritypolicy-2.yaml
 
     $ kubectl get psp
+
+### + Managing Multiple Clusters :
+
+    - Following are concerns to think about when deciding to use multicluster versus a single-cluster architecture:
+        Blast radius
+        Compliance
+        Security
+        Hard multitenancy
+        Regional-based workloads
+        Specialized workloads
+
+    Blast radius
+    For example, if you have one cluster that serves 500 applications and you have a platform issue, it takes out 100% of the 500
+    applications. If you had a platform layer issue with 5 clusters serving those 500 applications, you affect only 20% of the applications.
+    The downside to this is that now you need to manage five clusters, and your consolidation ratios will not be as good with a single cluster.
+    Dan Woods wrote a great article about an actual cascading failure in a production Kubernetes environment. It is a great example of why you will
+    want to consider multicluster architectures for larger environments.
+
+    Security
+    Security in large Kubernetes clusters can become difficult to manage. As you start onboarding more and more teams to a Kubernetes cluster each team may have
+    different security requirements and it can become very difficult to meet those needs in a large multi-tenant cluster. Even just managing RBAC, network policies,
+    and pod security policies can become difficult at scale in a single cluster. A small change to a network policy can inadvertently open up security risk to other
+    users of the cluster. With multiple clusters you can limit the security impact with a misconfiguration. If you decide that a larger Kubernetes cluster fits your
+    requirements, then ensure that you have a very good operational process for making security changes and understand the blast radius of making a change to RBAC,
+    network policy, and pod security policies.
+
+    Regional-based workloads
+    When running workloads that need to serve traffic from in-region endpoints, your design will include multiple clusters that are based per region.
+    When you have a globally distributed application, it becomes a requirement at that point to run multiple clusters. When you have workloads
+    that need to be regionally distributed, it’s a great use case for cluster federation of multiple clusters, which we dig into further
+    later in this chapter.
+
+    Specialized workloads
+    Specialized workloads, such as high-performance computing (HPC), machine learning (ML), and grid computing, also need to be addressed in the multicluster architecture.
+    These types of specialized workloads might require specific types of hardware, have unique performance profiles, and have specialized users of the clusters.
+    We’ve seen this use case to be less prevalent in the design decision because having multiple Kubernetes node pools can help address specialized hardware and performance profiles.
+    When you have the need for a very large cluster for an HPC or machine learning workload, you should take into consideration just dedicating clusters for these workloads.
+    With multicluster, you get isolation for “free,” but it also has design concerns that you need to address at the outset.
+
+    Multicluster Design Concerns
+    When choosing a multicluster design there are some challenges that you’ll run into. Some of these challenges might deter you from attempting a multicluster
+    design given that the design might overcomplicate your architecture. Some of the common challenges we find users running into are:
+
+        Data replication
+        Service discovery
+        Network routing
+        Operational management
+        Continuous deployment
+
+    Data replication and consistency has always been the crux of deploying workloads across geographical regions and multiple clusters. When running
+    these services, you need to decide what runs where and develop a replication strategy. Most databases have built-in tools to perform the replication,
+    but you need to design the application to be able to handle the replication strategy. For NoSQL-type database services this can be easier because they
+    can can handle scaling across multiple instances, but you still need to ensure that your application can handle eventual consistency across geographic
+    regions or at least the latency across regions. Some cloud services, such as Google Cloud Spanner and Microsoft Azure CosmosDB, have built database
+    services to help with the complications of handling data across multiple geographic regions.
+
+    Each Kubernetes cluster deploys its own service discovery registry, and registries are not synchronized across multiple clusters. This complicates
+    applications being able to easily identify and discover one another. Tools such as HashiCorp’s Consul can transparently synchronize services from
+    multiple clusters and even services that reside outside of Kubernetes. There are other tools like Istio, Linkerd, and Cillium that are building on
+    multiple cluster architectures to extend service discovery between clusters.
+
+    + Operator Pattern
+      When utilizing the Operator pattern, you can build in automation to operational tasks that need to be performed on operational tooling in multiclusters.
+      Let’s take the following Elasticsearch operator as an example. we utilized the Elasticsearch, Logstash, and Kibana (ELK) stack to perform log aggregation
+      of our cluster. The Elasticsearch operator can perform the following operations:
+
+        Replicas for master, client, and data nodes
+        Zones for highly available deployments
+        Volume sizes for master and data nodes
+        Resizing of cluster
+        Snapshot for backups of the Elasticsearch cluster
+
+      As you can see, the operator provides automation for many tasks that you would need to perform when managing Elasticsearch, such as automating snapshots
+      for backup and resizing the cluster. The beauty of this is that you manage all of this through familiar Kubernetes objects.
+
+    + The GitOps Approach to Managing Clusters :
+
+        GitOps was popularized by the folks at Weaveworks, and the idea and fundamentals were based on their experience of running Kubernetes in production.
+        GitOps takes the concepts of the software development life cycle and applies them to operations. With GitOps, your Git repository becomes your source of truth,
+        and your cluster is synchronized to the configured Git repository. For example, if you update a Kubernetes Deployment manifest, those configuration changes
+        are automatically reflected in the cluster state.
+        By using this method, you can make it easier to maintain multiclusters that are consistent and avoid configuration drift across the fleet. GitOps allows
+        you to declaratively describe your clusters for multiple environments and drives to maintain that state for the cluster. The practice of GitOps can apply to
+        both application delivery and operations, but in this chapter, we focus on using it to manage clusters and operational tooling.
+        Weaveworks Flux was one of the first tools to enable the GitOps approach, and it’s the tool we will use throughout the rest of the chapter.
+        There are many new tools that have been released into the cloud-native ecosystem that are worth a look, such as Argo CD, from the folks at Intuit,
+        which has also been widely adopted for the GitOps approach.
+
+![](./static/GitOps.png)
+
+    + Setup GitOps :
+
+    $ git clone https://github.com/weaveworks/flux
+    $ cd flux
+    $ vim deploy/flux-deployment.yaml
+
+    - Modify the following line with your Git repository:
+    $ --git-url=git@github.com:weaveworks/flux-get-started
+      (ex. --git-url=git@github.com:MDRCS/chaos_engineering.git)
+
+    # Now, go ahead and deploy Flux to your cluster:
+    # kubectl create ns flux
+    $ cd deploy
+    $ kubectl apply -f .
+
+    When Flux installs, it creates an SSH key so that it can authenticate with the Git repository.
+    Use the Flux command-line tool to retrieve the SSH key so that you can configure access to your
+    forked repository; first, you need to install fluxctl.
+
+    For MacOS:
+        brew install fluxctl
+
+    # generate a public key
+    $ fluxctl identity --k8s-fwd-ns flux
+
+    # Setup Pipeline between flux and Github repo
+    Open GitHub, navigate to repo `chaos_engineering`, go to Setting > “Deploy keys,” click “Add deploy key,” give it a Title, select
+    the “Allow write access” checkbox, paste the Flux public key, and then click “Add key.” See the GitHub documentation for more
+    information on how to manage deploy keys.
+
+    Now, if you view the Flux logs, you should see that it is synchronizing with your GitHub repository:
+
+    $ kubectl logs -f deployment/flux -n flux
+
+    $ fluxctl --k8s-fwd-ns=flux sync
+
+    After you see that it’s synchronizing with your GitHub repository, you should see that the Elasticsearch,
+    Prometheus, Redis, and frontend pods are created:
+
+    $ kubectl get pods -w
+    With this example complete, you should be able to see how easy it is for you to synchronize your GitHub repository state with your
+    Kubernetes cluster. This makes managing the multiple operational tools in your cluster much easier,
+    because multiple clusters can synchronize with a single repository and remove the situation of having snowflake clusters.
+
+
+    helm repo add fluxcd https://charts.fluxcd.io
+
+    kubectl create namespace flux
+    helm upgrade -i flux fluxcd/flux \
+    --set git.url=git@github.com:MDRCS/chaos_engineering.git \
+    --namespace flux
+
+    Multicluster Management Tools
+    When working with multiple clusters, using Kubectl can immediately become confusing because you need to set different contexts
+    to manage the different clusters. Two tools that you will want to install right away when dealing with multiple clusters are
+    kubectx and kubens, which allow you to easily change between multiple contexts and namespaces.
+
+    When you need a full-fleged multicluster management tool, there are a few within the Kubernetes ecosystem to look at
+    for managing multiple clusters. Following is a summary of some of the more popular tools:
+
+    + Rancher centrally manages multiple Kubernetes clusters in a centrally managed user interface (UI). It monitors, manages,
+      backs up, and restores Kubernetes clusters across on-premises, cloud, and hosted Kubernetes setups. It also has tools for
+      controlling applications deployed across multiple clusters and provides operational tooling.
+
+    + KQueen provides a multitenant self-service portal for Kubernetes cluster provisioning and focuses on auditing, visibility,
+      and security of multiple Kubernetes clusters. KQueen is an open source project that was developed by the folks at Mirantis.
+
+    + Gardener takes a different approach to multicluster management in that it utilizes Kubernetes primitives to provide Kubernetes
+      as a Service to your end users. It provides support for all major cloud vendors and was developed by the folks at SAP.
+      This solution is really geared toward users who are building a Kubernetes as a Service offering.
+
+
+    + KubeFed is not necessarily about multicluster management, but providing high availability (HA) deployments across multiple clusters. It allows you to combine multiple clusters into a single management endpoint for delivering applications on Kubernetes. For example, if you have a cluster that resides in multiple public cloud environments, you can combine these clusters into a single control plane to manage deployments to all clusters to increase the resiliency of your application.
+        As of this writing, the following Federated resources are supported:
+        Namespaces
+        ConfigMaps
+        Secrets
+        Ingress
+        Services
+        Deployments
+        ReplicaSets
+        Horizontal Pod Autoscalers
+        DaemonSets
+
+    # as an example in the file ./KubFed/federated-deployement.yaml we have a config :
+    That creates a federated Deployment of an NGINX pod with five replicas,
+    which are then spread across our clusters in Azure and another cluster in Google.
+    KubeFed is still in alpha, so keep an eye on it, but embrace the tools that
+    you already have or can implement now so that you can be successful with
+    Kubernetes HA and multicluster deployments.
+
+    ++ Managing Multiple Clusters Best Practices
+    Consider the following best practices when managing multiple Kubernetes clusters:
+
+    1- Limit the blast radius of your clusters to ensure cascading failures don’t have a bigger impact on your applications.
+    2- If you have regulatory concerns such as PCI, HIPPA, or HiTrust, think about utilizing multiclusters to ease the complexity
+       of mixing these workloads with general workloads.
+    3- If hard multitenancy is a business requirement, workloads should be deployed to a dedicated cluster.
+    4- If multiple regions are needed for your applications, utilize a Global Load Balancer to manage traffic between clusters.
+    5- You can break out specialized workloads such as HPC into their own individual clusters to ensure that the specialized needs for
+       the workloads are met.
+    6- If you’re deploying workloads that will be spread across multiple regional datacenters, first ensure that there is a data
+       replication strategy for the workload. Multiple clusters across regions can be easy, but replicating data across regions
+       can be complicated, so ensure that there is a sound strategy to handle asynchronous and synchronous workloads.
+    7- Utilize Kubernetes operators like the prometheus-operator or Elasticsearch operator to handle automated operational tasks.
+    8- When designing your multicluster strategy, also consider how you will do service discovery and networking between clusters.
+       Service mesh tools like HashiCorp’s Consul or Istio can help with networking across clusters.
+    9- Be sure that your CD strategy can handle multiple rollouts between regions or multiple clusters.
+    10- Investigate utilizing a GitOps approach to managing multiple cluster operational components to ensure consistency between
+       all clusters in your fleet. The GitOps approach doesn’t always work for everyone’s environment, but you should at least
+       investigate it to ease the operational burden of multicluster environments.
+
+
