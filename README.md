@@ -2936,6 +2936,8 @@
         Horizontal Pod Autoscalers
         DaemonSets
 
+![](./static/KubFed.png)
+
     # as an example in the file ./KubFed/federated-deployement.yaml we have a config :
     That creates a federated Deployment of an NGINX pod with five replicas,
     which are then spread across our clusters in Azure and another cluster in Google.
@@ -2965,3 +2967,138 @@
        investigate it to ease the operational burden of multicluster environments.
 
 
+### + Integrating External Services and Kubernetes
+
+    - most of the services that we build will need to interact with systems and services that exist outside of the Kubernetes
+      cluster in which they’re running. This might be because we are building new services that are being accessed by legacy
+      infrastructure running in virtual or physical machines. Conversely, it might be because the services that we are building
+      might need to access preexisting databases or other services that are likewise running on physical infrastructure in an
+      on-premises datacenter. Finally, you might have multiple different Kubernetes clusters with services that you need
+      to interconnect. For all of these reasons, the ability to expose, share, and build services that span the boundary of
+      your Kubernetes cluster is an important part of building real-world applications.
+
+     - After you’ve established network connectivity between pods in the Kubernetes cluster and the on-premises resource,
+       the next challenge is to make the external service look and feel like a Kubernetes service. In Kubernetes,
+       service discovery occurs via Domain Name System (DNS) lookups and, thus, to make our external database feel
+       like it is a native part of Kubernetes, we need to make the database discoverable in the same DNS.
+
+    + Selector-Less Services for Stable IP Addresses :
+    The first way to achieve this is with a selector-less Kubernetes Service. When you create a Kubernetes Service
+    without a selector, there are no Pods that match the service; thus, there is no load balancing performed.
+    Instead, you can program this selector-less service to have the specific IP address of the external resource
+    that you want to add to the Kubernetes cluster. That way, when a Kubernetes pod performs a lookup for your-database,
+    the built-in Kubernetes DNS server will translate that to a service IP address of your external service.
+    Here is an example of a selector-less service for an external database:
+
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: my-external-database
+        spec:
+          ports:
+          - protocol: TCP
+            port: 3306
+            targetPort: 3306
+
+    When the service exists, you need to update its endpoints to contain the database IP address serving at 24.1.2.3:
+        apiVersion: v1
+        kind: Endpoints
+        metadata:
+          # Important! This name has to match the Service.
+          name: my-external-database
+        subsets:
+          - addresses:
+              - ip: 24.1.2.3
+            ports:
+              - port: 3306
+
+![](./static/externaldb-kub.png)
+
+    + CNAME-Based Services for Stable DNS Names :
+    The previous example assumed that the external resource that you were trying to integrate with your Kubernetes
+    cluster had a stable IP address. Although this is often true of physical on-premises resources, depending on
+    the network toplogy, it might not always be true, and it is significantly less likely to be true in a cloud environment
+    where virtual machine (VM) IP addresses are more dynamic. Alternatively, the service might have multiple replicas sitting
+    behind a single DNS-based load balancer. In these situations, the external service that you are trying to bridge into your
+    cluster doesn’t have a stable IP address, but it does have a stable DNS name.
+    In such a situation, you can define a CNAME-based Kubernetes Service. If you’re not familiar with DNS records, a CNAME, or Canonical Name,
+    record is an indication that a particular DNS address should be translated to a different Canonical DNS name. For example,
+    a CNAME record for foo.com that contains bar.com indicates that anyone looking up foo.com should perform a recursive lookup
+    for bar.com to obtain the correct IP address. You can use Kubernetes Services to define CNAME records in the Kubernetes DNS server.
+    For example, if you have an external database with a DNS name of database.myco.com, you might create a CNAME Service that
+    is named myco-database. Such a Service looks like this:
+        kind: Service
+        apiVersion: v1
+        metadata:
+          name: my-external-database
+        spec:
+          type: ExternalName
+          externalName: database.myco.com
+
+    With a Service defined in this way, any pod that does a lookup for myco-database will be recursively resolved to database.myco.com.
+    Of course, to make this work, the DNS name of your external resource also needs to be resolveable from the Kubernetes DNS servers.
+    If the DNS name is globally accessible (e.g., from a well-known DNS service provider), this will simply automatically work. However,
+    if the DNS of the external service is located in a company-local DNS server (e.g., a DNS server that services only internal traffic),
+    the Kubernetes cluster might not know by default how to resolve queries to this corporate DNS server.
+
+
+    + Exporting Services from Kubernetes
+    In the previous section, we explored how to import preexisting services to Kubernetes, but you might also need to export services
+    from Kubernetes to the preexisting environments. This might occur because you have a legacy internal application for customer
+    management that needs access to some new API that you are developing in a cloud-native infrastructure. Alternately, you might
+    be building new microservice-based APIs but you need to interface with a preexisting traditional web application firewall (WAF)
+    because of internal policy or regulatory requirements. Regardless of the reason, being able to expose services from a Kubernetes
+    cluster out to other internal applications is a critical design requirement for many applications.
+
+    + Exporting Services by Using Internal Load Balancers
+    The easiest way to export from Kubernetes is by using the built-in Service object. If you have had any previous experience with Kubernetes,
+    you have no doubt seen how you can connect a cloud-based load balancer to bring external traffic to a collection of pods in the cluster. However,
+    you might not have realized that most clouds also offer an internal load balancer. The internal load balancer provides the same capabilities to map
+    a virtual IP address to a collection of pods, but that virtual IP address is drawn from an internal IP address space (e.g., 10.0.0.0/24) and thus is
+    only routeable from within that virtual network. You activate an internal load balancer by adding a cloud-specific annotation to your Service load balancer.
+    For example, in Microsoft Azure, you add the service.beta.kubernetes.io/azure-load-balancer-internal: "true" annotation. On Amazon Web Services (AWS),
+    the annotation is service.beta.kubernetes.io/aws-load-balancer-internal: 0.0.0.0/0. You place annotations in the metadata field in the Service resource as follows:
+
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: my-service
+          annotations:
+            # Replace this as needed in other environments
+            service.beta.kubernetes.io/azure-load-balancer-internal: "true"
+            ...
+
+    When you export a Service via an internal load balancer, you receive a stable, routeable IP address that is visible on the virtual network outside of the cluster.
+    You then can either use that IP address directly or set up internal DNS resolution to provide discovery for your exported service.
+
+![](./static/NodePort_External.png)
+
+    Here’s an example YAML file for a NodePort service:
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: my-node-port-service
+        spec:
+          type: NodePort
+          ...
+
+    - Following the creation of a Service of type NodePort, Kubernetes automatically selects a port for the service; you can get that port from the Service by looking
+      at the spec.ports[*].nodePort field. If you want to choose the port yourself, you can specify it when you create the service, but the NodePort must be within the
+      configured range for the cluster. The default for this range are ports between 30000 and 30999.
+
+    ++ Sharing Services Between Kubernetes
+    The previous sections have described how to connect Kubernetes applications to outside services and how to connect outside services to Kubernetes applications,
+    but another significant use case is connecting services between Kubernetes clusters. This may be to achieve East-West failover between different regional Kubernetes
+    clusters, or it might be to link together services run by different teams. The process of achieving this interaction is actually a combination of the designs described
+    in the previous sections.
+    First, you need to expose the Service within the first Kubernetes cluster to enable network traffic to flow. Let’s assume that you’re in a cloud environment that supports
+    internal load balancers, and that you receive a virtual IP address for that internal load balancer of 10.1.10.1. Next, you need to integrate this virtual IP address into the second
+    Kubernetes cluster to enable service discovery. You achieve this in the same manner as importing an external application into Kubernetes (first section). You create a selector-less
+    Service and you set its IP address to be 10.1.10.1. With these two steps you have integrated service discovery and connectivity between services within your two Kubernetes clusters.
+    These steps are fairly manual, and although this might be acceptable for a small, static set of services, if you want to enable tighter or automatic service integration between clusters,
+    it makes sense to write a cluster daemon that runs in both clusters to perform the integration. This daemon would watch the first cluster for Services with a particular annotation,
+    say something like myco.com/exported-service; all Services with this annotation would then be imported into the second cluster via selector-less services. Likewise, the same daemon would
+    garbage-collect and delete any services that are exported into the second cluster but are no longer present in the first. If you set up such daemons in each of your regional clusters,
+    you can enable dynamic, East-West connectivity between all clusters in your environment.
+
+    About Third-parties -> for connectivity and networking between clusters you can use service mesh tools like istio.
