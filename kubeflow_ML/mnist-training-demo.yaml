@@ -1,0 +1,21 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  labels:
+    app: mnist-demo
+  name: mnist-demo
+spec:
+  template:
+    metadata:
+      labels:
+        app: mnist-demo
+    spec:
+      containers:
+      - name: mnist-demo
+        image: lachlanevenson/tf-mnist:gpu
+        args: ["--max_steps", "500"]
+        imagePullPolicy: IfNotPresent
+        resources:
+          limits:
+           nvidia.com/gpu: 1
+      restartPolicy: OnFailure

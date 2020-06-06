@@ -3102,3 +3102,165 @@
     you can enable dynamic, East-West connectivity between all clusters in your environment.
 
     About Third-parties -> for connectivity and networking between clusters you can use service mesh tools like istio.
+
+### - Running Machine Learning in Kubernetes
+
+
+
+![](./static/ml_workflow.png)
+
+    + Machine learning workflow
+
+    Dataset preparation
+    This phase includes the storage, indexing, cataloging, and metadata associated with the dataset that is used to train the model. For the purposes of this book, we consider only the storage aspect.
+    Datasets vary in size, from hundreds of megabytes to hundreds of terabytes. The dataset needs to be provided to the model in order for the model to be trained. You must consider storage that provides
+    the appropriate properties to meet these needs. Typically, large-scale block and object stores are required and must be accessible via Kubernetes native storage abstractions or directly accessible APIs.
+
+    Machine learning algorithm development
+    This is the phase in which data scientists write, share, and collaborate on machine learning algorithms. Open source tools like JupyterHub are easy to install on Kubernetes because they typically
+    function like any other workload.
+
+    Training
+    This is the process by which the model will use the dataset to learn how to perform the tasks for which it has been designed. The resulting artifact of training process is usually a checkpoint
+    of the trained model state. The training process is the piece that takes advantage of all of the capabilities of Kubernetes at the same time. “Scheduling, access to specialized hardware,
+    dataset volume management, scaling, and networking will all be exercised in unison in order to complete this task. We cover more of the specifics of the training phase in the next section.
+
+    Serving
+    This is the process of making the trained model accessible to service requests from clients so that it can make predictions based on the the data supplied from the client. For example,
+    if you have an image-recognition model that’s been trained to detect dogs and cats, a client might submit a picture of a dog, and the model should be able to determine whether it is a dog,
+    with a certain level of accuracy.
+
+    “Let’s take a look at the main problem areas you’ll need to address when preparing a cluster for machine learning workloads.
+
+    Model Training on Kubernetes
+    Training machine learning models on Kubernetes requires conventional CPUs and graphics processing units (GPUs). Typically, the more resources you apply, the faster the training will be completed.
+    In most cases, model training can be achieved on a single machine that has the required resources. Many cloud providers offer multi-GPU virtual machine (VM) types, so we recommend scaling VMs
+    vertically to four to eight GPUs before looking into distributed training. Data scientists use a technique known as hyperparameter tuning when training models. Hyperparameter tuning is the
+    process of finding the optimal set of hyperparameters for model training. A hyperparameter is simply a parameter that has a set value before the training process begins. The technique involves
+    running many of the same training jobs with a different set of hyperparameters.
+
+    Training your first model on Kubernetes
+    In this example, you are going to use the MNIST dataset to train an image-classification model. The MNIST dataset is publicly available and commonly used for image classification.
+    To train the model, you are going to need “GPUs. Let’s confirm that your Kubernetes cluster has GPUs available. The following output shows that this Kubernetes cluster has four GPUs available:
+    $ kubectl get nodes -o yaml | grep -i nvidia.com/gpu
+          nvidia.com/gpu: "1"
+          nvidia.com/gpu: "1"
+          nvidia.com/gpu: "1"
+          nvidia.com/gpu: "1"
+
+        i have amd gpu -> kubectl get nodes -o yaml | grep -i amd.com/gpu
+    To run your training, you are going to using the Job kind in Kubernetes, given that training is a batch workload. You are going to run your training for 500 steps and use a single GPU.
+
+    # Training our model on mnist dataset
+    $ vi mnist-training-demo.yaml # dump the config
+    $ kubectl create -f mnist-training-demo.yaml
+    $ kubectl get jobs
+    $ kubectl get pods
+
+    - Looking at the pod logs, you can see the training happening:
+    $ kubectl logs mnist-demo-hv9b2”
+
+    - Finally, you can see that the training has completed by looking at the job status:
+    $ kubectl get jobs
+
+    - To clean up the training job, simply run the following command:
+    $ kubectl delete -f mnist-demo.yaml
+
+    #Congratulations! You just ran your first model training job on Kubernetes.
+
+    Distributed Training on Kubernetes
+    Distributed training is still in its infancy and is difficult to optimize. Running a training job
+    that requires eight GPUs will almost always be faster to train on a single eight-GPU machine compared to two
+    machines each with four GPUs. The only time that you should resort to using distributed training is when the model
+    doesn’t fit on the biggest machine available. If you are certain that you must run distributed training, it is important
+    to understand the architecture. Figure 14-2 depicts the distributed TensorFlow architecture, and you can see how the
+    model and the parameters are distributed.
+
+![](./static/distributed_training.png)
+
+    Machine learning workloads demand very specific configurations across all aspects of your cluster. The training phases
+    are most certainly the most resource intensive. It’s also important to note, as we mentioned a moment ago, that machine
+    learning algorithm training is almost always a batch-style workload. Specifically, it will have a start time and a finish time.
+    The finish time of a training run depends on how quickly you can meet the resource requirements of the model training.
+    This means that scaling is almost certainly a quicker way to finish training jobs faster, but scaling has its own set of bottlenecks.
+
+    Specialized Hardware
+    Training and serving a model is almost always more efficient on specialized hardware. A typical example of such specialized hardware
+    would be commodity GPUs. Kubernetes allows you to access GPUs via device plug-ins that make the GPU resource known to the Kubernetes
+    scheduler and therefore able to be scheduled. There is a device plug-in framework that facilitates this capability, which means that
+    vendors do not need to modify the core Kubernetes code to implement their specific device. These device plug-ins typically run as DaemonSets
+    on each node, which are processes that are responsible for advertising these specific resources to the Kubernetes API. Let’s take a look
+    t the NVIDIA device plug-in for Kubernetes, which enables access to NVIDIA GPUs. After they’re running, you can create a pod as follows,
+    and Kubernetes will ensure that it is scheduled to a node that has these resource available:
+
+        apiVersion: v1
+        kind: Pod
+        metadata:
+          name: gpu-pod
+        spec:
+          containers:
+            - name: digits-container
+              image: nvidia/digits:6.0
+              resources:
+                limits:
+                  nvidia.com/gpu: 2 # requesting 2 GPUs
+
+    Device plug-ins are not limited to GPUs; you can use them wherever specialized hardware is needed—for example, Field Programmable Gate Arrays (FPGAs) or InfiniBand.
+
+    + Storage
+    Storage is one of the most critical aspects of the machine learning workflow. You need to consider storage because it directly affects the following pieces of the machine learning workflow:
+
+        - Dataset storage and distribution among worker nodes during training
+        - Checkpoints and saving models
+
+    Dataset storage and distribution among worker nodes during training
+    During training, the dataset must be retrievable by every worker node. The storage needs are read-only, and, typically, the faster the disk, the better. The type of disk
+    that’s providing the storage is almost completely dependent on the size of the dataset. Datasets of hundreds of megabytes or gigabytes might be perfect for block storage,
+    but datasets that are several or hundreds of terabytes in size might be better suited to object storage. Depending on the size and location of the disks that hold the datasets,
+    there might be a performance hit on your networking.
+
+    Checkpoints and saving models
+    Checkpoints are created as a model is being trained, and saving models allows you to use them for serving. In both cases, you need storage attached to each of the worker nodes
+    to store this data. The data is typically stored under a single directory, and each worker node is writing to a specific checkpoint or save file. Most tools expect the checkpoint
+    and save data to be in a single location and require ReadWriteMany. ReadWriteMany simply means that the volume can be mounted as read-write by many nodes.
+    When using Kubernetes PersistentVolumes, you will need to determine the best storage platform for your needs. The Kubernetes documentation keeps a list
+    of volume plug-ins that support ReadWriteMany.
+
+    * https://kubernetes.io/docs/concepts/storage/persistent-volumes/#access-modes
+
+    Networking
+    The training phase of the machine learning workflow has a large impact on the network (specifically, when running distributed training). If we consider TensorFlow’s distributed architecture,
+    there are two discrete phases to consider that create a lot of network traffic: variable distribution from each of the parameter servers to each of the worker nodes, and also the application
+    of gradients from each worker node back to the parameter server (see Figure 14-2). The time it takes for this exchange to happen directly affects the time it takes to train a model. So, it’s
+    a simple game of the faster, the better (within reason, of course). With most public clouds and servers today supporting 1-Gbps, 10-Gbps, and sometimes 40-Gbps network interface cards, generally
+    network bandwidth is only a concern at lower bandwidths. You might also consider InfiniBand if you need high network bandwidth.”
+
+    While raw network bandwidth is more often than not a limiting factor, there are also instances for which getting the data onto the wire from the kernel in the first place is the problem.
+    There are open source projects that take advantage of Remote Direct Memory Access (RDMA) to further accelerate network traffic without the need to modify your worker nodes or application
+    code. RDMA allows computers in a network to exchange data in main memory without using the processor, cache, or operating system of either computer. You might consider the open source project
+    Freeflow, which boasts of having high network performance for container network overlays.
+
+    Specialized Protocols
+    There are other specialized protocols that you can consider when using machine learning on Kubernetes. These protocols are often vendor specific, but they all seek to address distributed
+    training scaling issues by removing areas of the architecture that quickly become bottlenecks, for example, parameter servers. These protocols often allow the direct exchange of information
+    between GPUs on multiple nodes without the need to involve the node CPU and OS. Here are a couple that you might want to look into to more efficiently scale your distributed training:
+
+    + Message Passing Interface (MPI) is a standardized portable API for the transfer of data between distributed processes.
+
+    + NVIDIA Collective Communications Library (NCCL) is a library of topology-aware multi-GPU communication primitives.
+
+    Data Scientist Concerns
+    In the previous discussion, we shared considerations that you need to make in order to be able to run machine learning workloads on your Kubernetes cluster.
+    But what about the data scientist? Here we cover some popular tools that make it
+
+    Achieving linear scaling with distributed training. This is the holy grail of distributed model training. Most libraries unfortunately don’t scale in a
+    linear fashion when distributed. There is lots of work being done to make scaling better, but it’s important to understand the costs because this isn’t as
+    simple as throwing more hardware at the problem. In our experience, it’s almost always the model itself and not the infrastructure supporting it that is
+    the source of the bottleneck. It is, however, important to review the utilization of the GPU, CPU, network, and storage before pointing fingers at
+    the model itself. Open source tools such as Horovod seek to improve distributed training frameworks and provide better model scaling.
+
+
+
+
+
+
