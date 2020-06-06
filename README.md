@@ -2694,3 +2694,16 @@
         export FRONTEND_URL=http://journal.com/api
         chaos run experiment.json
 
+    - The experiment will allows you to determine bottlenicks of your cluster.
+
+### + Versioning, Releases, and Rollouts
+
+    - One of the main complaints of traditional monolithic applications is that over time they begin to grow too large and unwieldy to properly upgrade,
+      version, or modify at the speed the business requires. Many can argue that this is one of the main critical factors that led to more Agile development
+      practices and the advent of microservice architectures. Being able to quickly iterate on new code, solve new problems, or fix hidden problems before
+      they become major issues, as well as the promise of zero-downtime upgrades, are all goals that development teams strive for in this ever-changing
+      internet economy world. Practically, these issues can be solved with proper processes and procedures in place, no matter the type of system,
+      but this usually comes at a much higher cost of both technology and human capital to maintain.
+
+
+

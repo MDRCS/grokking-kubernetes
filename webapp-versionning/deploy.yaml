@@ -1,0 +1,139 @@
+# Web Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gbweb-deploy
+  labels:
+    app: guest-book
+    appver: 1.6.9
+    environment: production
+    release: guest-book-stable
+    release number: 34e57f01
+spec:
+  strategy:
+    type: rollingUpdate
+    rollingUpdate:
+      maxUnavailbale: 3
+      maxSurge: 2
+  selector:
+    matchLabels:
+      app: gb-web
+      ver: 1.5.8
+    matchExpressions:
+      - {key: environment, operator: In, values: [production]}
+  template:
+    metadata:
+      labels:
+        app: gb-web
+        ver: 1.5.8
+        environment: production
+    spec:
+      containers:
+      - name: gb-web-cont
+        image: evillgenius/gb-web:v1.5.5
+        env:
+        - name: GB_DB_HOST
+          value: gb-mysql
+        - name: GB_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        resources:
+          limits:
+            memory: "128Mi"
+            cpu: "500m"
+        ports:
+        - containerPort: 80
+---
+# DB Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gb-mysql
+  labels:
+    app: guest-book
+    appver: 1.6.9
+    environment: production
+    release: guest-book-stable
+    release number: 34e57f01
+spec:
+  selector:
+    matchLabels:
+      app: gb-db
+      tier: backend
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: gb-db
+        tier: backend
+        ver: 1.5.9
+        environment: production
+    spec:
+      containers:
+        - image: mysql:5.6
+          name: mysql
+          env:
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-pass
+                  key: password
+          ports:
+            - containerPort: 3306
+              name: mysql
+          volumeMounts:
+            - name: mysql-persistent-storage
+              mountPath: /var/lib/mysql
+      volumes:
+        - name: mysql-persistent-storage
+          persistentVolumeClaim:
+            claimName: mysql-pv-claim
+---
+# DB Backup Job
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-backup
+  labels:
+    app: guest-book
+    appver: 1.6.9
+    environment: production
+    release: guest-book-stable
+    release number: 34e57f01
+  annotations:
+    "helm.sh/hook": pre-upgrade, pre-delete, pre-rollback
+    "helm.sh/hook-delete-policy": hook-succeeded
+spec:
+  template:
+    metadata:
+      labels:
+        app: gb-db-backup
+        tier: backend
+        ver: 1.6.1
+        environment: production
+    spec:
+      containers:
+        - name: mysqldump
+          image: evillgenius/mysqldump:v1
+          env:
+            - name: DB_NAME
+              value: gbdb1
+            - name: GB_DB_HOST
+              value: gb-mysql
+            - name: GB_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-pass
+                  key: password
+          volumeMounts:
+            - mountPath: /mysqldump
+              name: mysqldump
+              volumes:
+                - name: mysqldump
+                  hostPath:
+                    path: /home/bck/mysqldump
+              restartPolicy: Never
+              backoffLimit: 3
