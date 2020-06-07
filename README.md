@@ -3381,3 +3381,295 @@
 
     - Most organizations look to containerize their stateless applications and leave the stateful applications as is.
 
+### + Automating The container orchestration :
+
+    - An Operator extends Kubernetes to automate the management of the entire lifecycle of a particular application. Operators serve as a
+      packaging mechanism for distributing applications on Kubernetes, and they monitor, maintain, recover, and upgrade the software they deploy.
+
+    - Other open source tools available for building Operators include Kopf for Python, Kubebuilder from the Kubernetes project, and the Java Operator SDK.
+
+![](./static/kub8_control_plane.png)
+
+    - An Operator is like an automated Site Reliability Engineer for its application. It encodes in software the skills of an expert administrator.
+      An Operator can manage a cluster of database servers, for example. It knows the details of configuring and managing its application,
+      and it can install a database cluster of a declared software version and number of members. An Operator continues to monitor its application
+      as it runs, and can back up data, recover from failures, and upgrade the application over time, automatically. Cluster users employ
+      kubectl and other standard tools to work with Operators and the applications they manage, because Operators extend Kubernetes.
+
+    + How Operators Work
+    Operators work by extending the Kubernetes control plane and API. In its simplest form, an Operator adds an endpoint to the Kubernetes API,
+    called a custom resource (CR), along with a control plane component that monitors and maintains resources of the new type. This Operator
+    can then take action based on the resource’s state.
+
+![](./static/howworks_operators.png)
+
+    + Kubernetes CRs :
+    CRs are the API extension mechanism in Kubernetes. A custom resource definition (CRD) defines a CR; it’s analogous to a schema for the CR data.
+    Unlike members of the official API, a given CRD doesn’t exist on every Kubernetes cluster. CRDs extend the API of the particular cluster where
+    they are defined. CRs provide endpoints for reading and writing structured data. A cluster user can interact with CRs with kubectl or another
+    Kubernetes client, just like any other API resource.
+
+    + How Operators Are Made :
+    Kubernetes compares a set of resources to reality; that is, the running state of the cluster. It takes actions to make reality match the desired state
+    described by those resources. Operators extend that pattern to specific applications on specific clusters. An Operator is a custom Kubernetes controller
+    watching a CR type and taking application-specific actions to make reality match the spec in that resource.
+    Making an Operator means creating a CRD and providing a program that runs in a loop watching CRs of that kind. What the Operator does in response to changes
+    in the CR is specific to the application the Operator manages. The actions an Operator performs can include almost anything: scaling a complex app, application
+    version upgrades, or even managing kernel modules for nodes in a computational cluster with specialized hardware.
+
+    - Example: The etcd Operator
+    - etcd is a distributed key-value store. In other words, it’s a kind of lightweight database cluster. An etcd cluster usually requires a knowledgeable administrator to manage it.
+      An etcd administrator must know how to:
+        1- Join a new node to an etcd cluster, including configuring its endpoints, making connections to persistent storage, and making existing members aware of it.
+        2- Back up the etcd cluster data and configuration.
+        3- Upgrade the etcd cluster to new etcd versions.
+
+    The etcd Operator knows how to perform those tasks. An Operator knows about its application’s internal state, and takes regular action to align that state with the desired state
+    expressed in the specification of one or more custom resources.
+
+    - deploy the etcd Operator and put it through its paces while using the etcd API to read and write data. For now, it’s worth remembering that adding a member to a running etcd
+      cluster isn’t as simple as just running a new etcd pod, and the etcd Operator hides that complexity and automatically heals the etcd cluster.
+
+    + Who Are Operators For?
+    The Operator pattern arose in response to infrastructure engineers and developers wanting to extend Kubernetes to provide features specific to their sites and software.
+    Operators make it easier for cluster administrators to enable, and developers to use, foundation software pieces like databases and storage systems with less management overhead.
+    If the “killernewdb” database server that’s perfect for your application’s backend has an Operator to manage it, you can deploy killernewdb without needing to become an expert killernewdb DBA.
+
+    Setting Up an Operator Lab
+    To build, test, and run Operators in the following chapters, you’ll need cluster- admin access to a cluster running Kubernetes version v1.11.0 or later.
+
+    # Upgrade kubectl tool :
+
+    $ curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.18.0/bin/linux/amd64/kubectl
+    $ chmod +x ./kubectl
+    $ sudo mv ./kubectl /usr/local/bin/kubectl
+
+    # check if you have cluster-admin role
+    $ kubectl describe clusterrole cluster-admin
+
+    A Common Starting Point
+
+    etcd (https://github.com/coreos/etcd) is a distributed key-value store with roots at CoreOS, now under the auspices of the Cloud Native Computing Foundation.
+    It is the underlying data store at the core of Kubernetes, and a key piece of several dis‐ tributed applications. etcd provides reliable storage by implementing
+    a protocol called Raft (https://raft.github.io/) that guarantees consensus among a quorum of members.
+    The etcd Operator often serves as a kind of “Hello World” example of the value and mechanics of the Operator pattern, and we follow that tradition here. We return
+    to it because the most basic use of etcd is not difficult to illustrate, but etcd cluster setup and administration require exactly the kind of application-specific
+    know-how you can bake into an Operator. To use etcd, you put keys and values in, and get them back out by name. Creating a reliable etcd cluster of the minimum three
+    or more nodes requires configuration of endpoints, auth, and other concerns usually left to an etcd expert (or their collection of custom shell scripts). Keeping
+    etcd running and upgra‐ ded over time requires continued administration. The etcd Operator knows how to do all of this.
+
+    Fetching the etcd Operator Manifests
+
+    $ cd Operators_Pattern
+    $ git clone https://github.com/kubernetes-operators-book/chapters.git
+    $ cd etcd_operator
+
+    CRs: Custom API Endpoints
+    As with nearly everything in Kubernetes, a YAML manifest describes a CRD. A CR is a named endpoint in the Kubernetes API. A CRD named etcdclusters.etcd.data base.coreos.com represents the new type of endpoint.
+
+    $ kubectl create -f etcd-operator-crd.yaml
+    $ kubectl get crd
+
+    Who Am I: Defining an Operator Service Account
+    we give an overview of Kubernetes authorization and define service accounts, roles, and other authorization concepts. For now, we just want to take a first look at basic declarations
+    for a service account and the capabilities that account needs to run the etcd Operator.
+
+    The file etcd-operator-sa.yaml defines the service account:
+        apiVersion: v1
+        kind: ServiceAccount
+        metadata:
+        name: etcd-operator-sa
+    Create the service account by using kubectl create:
+
+    $ kubectl create -f etcd-operator-sa.yaml
+    serviceaccount/etcd-operator-sa created
+
+    $ kubectl get serviceaccounts
+
+    $ kubectl create -f etcd-operator-role.yaml
+
+    Role binding
+    The last bit of RBAC configuration, RoleBinding, assigns the role to the service account for the etcd Operator.
+    It’s declared in the file etcd-operator-rolebinding.yaml:
+
+    NB: Wherever you are, the namespace value in this RoleBinding must match the namespace on the cluster where you are working.
+
+    $ kubectl create -f etcd-operator-rolebinding.yaml
+
+    # deploy
+    $ kubectl create -f etcd-operator-deployment.yaml
+    $ kubectl get deployments
+    $ kubectl get pods
+
+    Declaring an etcd Cluster
+    Earlier, you created a CRD defining a new kind of resource, an EtcdCluster. Now that you have an Operator watching
+    EtcdCluster resources, you can declare an EtcdClus‐ ter with your desired state. To do so, provide the two spec elements
+    the Operator rec‐ ognizes: size, the number of etcd cluster members, and the version of etcd each of those members should run.
+
+    This brief manifest declares a desired state of three cluster members, each running version 3.1.10 of the etcd server.
+    Create this etcd cluster using the familiar kubectl syntax:
+
+    $ kubectl create -f etcd-cluster-cr.yaml
+      etcdcluster.etcd.database.coreos.com/example-etcd-cluster created
+    $ kubectl get pods -w
+
+    Try kubectl describe to report on the size, etcd version, and status of your etcd cluster, as shown here:
+    $ kubectl describe etcdcluster/example-etcd-cluster
+
+    Operator constructs the name of the service used by clients of the etcd API by appending -client to the
+    etcd cluster name defined in the CR. Here, the client ser‐ vice is named example-etcd-cluster-client, and
+    it listens on the usual etcd client IP port, 2379. Kubectl can list the services associated with the etcd cluster:
+
+    $ kubectl get services --selector etcd_cluster=example-etcd-cluster
+
+    You can run the etcd client on the cluster and use it to connect to the client service and interact with the etcd API.
+    The following command lands you in the shell of an etcd container:
+
+    $ kubectl run --rm -i --tty etcdctl --image quay.io/coreos/etcd --restart=Never -- /bin/sh
+
+    From the etcd container’s shell, create and read a key-value pair in etcd with etcdctl’s put and get verbs:
+    $ export ETCDCTL_API=3
+    $ export ETCDCSVC=http://example-etcd-cluster-client:2379
+    $ etcdctl --endpoints $ETCDCSVC put foo bar
+    $ etcdctl --endpoints $ETCDCSVC get foo
+
+    Repeat these queries or run new put and get commands in an etcdctl shell after each of the changes you go on to make.
+    You’ll see the continuing availability of the etcd API service as the etcd Operator grows the cluster, replaces members,
+    and upgrades the version of etcd.
+
+    Scaling the etcd Cluster
+    You can grow the etcd cluster by changing the declared size specification. Edit etcd- cluster-cr.yaml and change size from 3 to 4 etcd members. Apply the changes to the EtcdCluster CR:
+
+    $ vi etcd-cluster-cr.yaml # change size from 3 to 4
+    $ kubectl apply -f etcd-cluster-cr.yaml
+
+    Checking the running pods shows the Operator adding a new etcd member to the
+    etcd cluster:
+
+    $ kubectl get pods
+
+    ++ You can also try $ kubectl edit etcdcluster/example-etcd-cluster
+    to drop into an editor and make a live change to the clus‐ ter size.
+
+    Failure and Automated Recovery
+    You saw the etcd Operator replace a failed member back in Chapter 1. Before you see it live, it’s worth reiterating the general
+    steps you’d have to take to handle this man‐ ually. Unlike a stateless program, no etcd pod runs in a vacuum. Usually, a human etcd
+    “operator” has to notice a member’s failure, execute a new copy, and provide it with configuration so it can join the etcd cluster
+    with the remaining members. The etcd Operator understands etcd’s internal state and makes the recovery automatic.
+
+    Recovering from a failed etcd member
+    Run a quick $ kubectl get pods -l app=etc to get a list of the pods in your etcd cluster. Pick one you don’t like the looks of, and tell Kubernetes to delete it:
+    $ kubectl delete pod example-etcd-cluster-9lmg4p6lpd
+
+    The Operator notices the difference between reality on the cluster and the desired state, and adds an etcd member to replace the one you deleted.
+    You can see the new etcd cluster member in the PodInitializing state when retrieving the list of pods, as shown here:
+
+    $ kubectl get pods -w
+
+    # check the changes on your cluster
+    $ kubectl describe etcdcluster/example-etcd-cluster
+        he dead member example-etcd-cluster-9lmg4p6lpd is being replaced
+
+    Throughout the recovery process, if you fire up the etcd client pod again, you can make requests to the etcd cluster,
+    including a check on its general health:
+
+    $ kubectl run --rm -i --tty etcdctl --image quay.io/coreos/etcd --restart=Never -- /bin/sh
+    If you don't see a command prompt, try pressing enter.
+    $ etcdctl --endpoints http://example-etcd-cluster-client:2379 cluster-health
+      cluster is healthy
+
+    The etcd Operator recovers from failures in its complex, stateful application the same way Kubernetes automates recoveries for stateless
+    apps. That is conceptually simple but operationally powerful. Building on these concepts, Operators can perform more advanced tricks,
+    like upgrading the software they manage. Automating upgrades can have a positive impact on security, just by making sure things stay up to date.
+    When an Operator performs rolling upgrades of its application while maintaining service availability, it’s easier to keep software
+    patched with the latest fixes.
+
+    Upgrading etcd Clusters
+    If you happen to be an etcd user already, you may have noticed we specified an older version, 3.1.10. We contrived this so we could explore
+    the etcd Operator’s upgrade skills.
+
+    Upgrading the hard way
+    At this point, you have an etcd cluster running version 3.1.10. To upgrade to etcd 3.2.13, you need to perform a series of steps. Since this
+    book is about Operators, and not etcd administration, we’ve condensed the process presented here, leaving aside networking and host-level
+    concerns to outline the manual upgrade process. The steps to follow to upgrade manually are:
+
+    1. Check the version and health of each etcd node.
+    2. Create a snapshot of the cluster state for disaster recovery.
+    3. Stop one etcd server. Replace the existing version with the v3.2.13 binary. Start the new version.
+    4. Repeat for each etcd cluster member—at least two more times in a three-member cluster.
+
+    The easy way: Let the Operator do it
+    With a sense of the repetitive and error-prone process of a manual upgrade, it’s easier to see the power of
+    encoding that etcd-specific knowledge in the etcd Operator. The Operator can manage the etcd version, and an
+    upgrade becomes a matter of declaring a new desired version in an EtcdCluster resource.
+
+    Triggering etcd upgrades
+    Get the version of the current etcd container image by querying some etcd-cluster pod, filtering the output to see just the version:
+    $ kubectl get pod example-etcd-cluster-9zkz9qbrt6 -o yaml | grep "image:" | uniq
+        image: quay.io/coreos/etcd:v3.1.10
+
+    Or, since you added an EtcdCluster resource to the Kubernetes API, you can instead summarize the Operator’s picture of example-etcd-cluster
+    directly by using kubectl describe as you did earlier:
+
+    $ kubectl describe etcdcluster/example-etcd-cluster
+
+    You’ll see the cluster is running etcd version 3.1.10, as specified in the file
+    etcd-cluster-cr.yaml and the CR created from it.
+    Edit etcd-cluster-cr.yaml and change the version spec from 3.1.10 to 3.2.13.
+    Then apply the new spec to the resource on the cluster:
+    $ kubectl apply -f etcd-cluster-cr.yaml
+
+    $ kubectl describe etcdcluster/example-etcd-cluster
+         Member example-etcd-cluster-x2mjxt6sqf upgraded from 3.1.10 to 3.2.13
+
+    Upgrade the upgrade
+    With some kubectl tricks, you can make the same edit directly through the Kuber‐ netes API. This time, let’s upgrade from 3.2.13
+    to the latest minor version of etcd available at the time of this writing, version 3.3.12:
+
+    $ kubectl patch etcdcluster example-etcd-cluster --type='json' -p='[{"op": "replace", "path": "/spec/version", "value":3.3.12}]'
+
+    - Cleanup :
+    $ cd ./Operators_Pattern/etcd-operator
+    $ kubectl delete -f .
+
+    Custom Resources
+    CRs, as extensions of the Kubernetes API, contain one or more fields, like a native resource, but are not part of a default Kubernetes deployment.
+    CRs hold structured data, and the API server provides a mechanism for reading and setting their fields as you would those in a native resource,
+    by using kubectl or another API client. Users define a CR on a running cluster by providing a CR definition. A CRD is akin to a schema for a CR,
+    defining the CR’s fields and the types of values those fields contain.
+
+    CR or ConfigMap?
+    Kubernetes provides a standard resource, the ConfigMap (https://oreil.ly/ba0uh), for making configuration data available to applications. ConfigMaps seem to overlap
+    with the possible uses for CRs, but the two abstractions target different cases.
+    ConfigMaps are best at providing a configuration to a program running in a pod on the cluster—think of an application’s config file, like httpd.conf or MySQL’s mysql.cnf.
+    Applications usually want to read such configuration from within their pod, as a file or the value of an environment variable, rather than from the Kubernetes API.
+    Kubernetes provides CRs to represent new collections of objects in the API. CRs are created and accessed by standard Kubernetes clients, like kubectl, and they obey Kubernetes
+    conventions, like the resources .spec and .status. At their most useful, CRs are watched by custom controller code that in turn creates, updates, or deletes other cluster objects
+    or even arbitrary resources outside of the cluster.
+
+
+    Cluster-Scoped Operators
+    There are some situations where it is desirable for an Operator to watch and manage an application or services throughout a cluster. For example, an Operator that man‐ ages
+    a service mesh, such as Istio (https://oreil.ly/jM5q2), or one that issues TLS certif‐ icates for application endpoints, like cert-manager (https://oreil.ly/QT8tE), might
+    be most effective when watching and acting on cluster-wide state.
+    By default, the Operator SDK used in this book creates deployment and authorization templates that limit the Operator to a single namespace. It is possible to change most
+    Operators to run in the cluster scope instead. Doing so requires changes in the Oper‐ ator’s manifests to specify that it should watch all namespaces in a cluster and that it
+    should run under the auspices of a ClusterRole and ClusterRoleBinding, rather than the namespaced Role and RoleBinding authorization objects.
+
+    Service accounts
+    on the other hand, are managed by Kubernetes and can be created and manipulated through the Kubernetes API. A service account is a special type of cluster user for authorizing
+    programs instead of people. An Operator is a program that uses the Kubernetes API, and most Operators should derive their access rights from a service account. Creating a service
+    account is a standard step in deploying an Operator. The service account identifies the Operator, and the account’s role denotes the powers granted to the Operator.
+
+    RoleBindings
+    A RoleBinding ties a role to a list of one or more users. Those users are granted the permissions defined in the role referenced in the binding. A RoleBinding can refer‐ ence
+    only those roles in its own namespace. When deploying an Operator restricted to a namespace, a RoleBinding binds an appropriate role to a service account identi‐ fying the Operator.
+
+    ClusterRoles and ClusterRoleBindings
+    As discussed earlier, most Operators are confined to a namespace. Roles and Role‐ Bindings are also restricted to a namespace. ClusterRoles and ClusterRoleBindings are their cluster-wide
+    equivalents. A standard, namespaced RoleBinding can refer‐ ence only roles in its namespace, or ClusterRoles defined for the entire cluster. When a RoleBinding references a ClusterRole,
+    the rules declared in the ClusterRole apply to only those specified resources in the binding’s own namespace. In this way, a set of common roles can be defined once as ClusterRoles, but
+    reused and granted to users in just a given namespace.
+
+    The ClusterRoleBinding grants capabilities to a user across the entire cluster, in all namespaces. Operators charged with cluster-wide responsibilities will often tie a ClusterRole to an
+    Operator service account with a ClusterRoleBinding.
