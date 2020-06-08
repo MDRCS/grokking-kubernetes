@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: visitors-helm-chartops
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: visitors-helm-chartops
+  template:
+    metadata:
+      labels:
+        name: visitors-helm-chartops
+    spec:
+      serviceAccountName: visitors-helm-chartops
+      containers:
+        - name: visitors-helm-chartops
+          # Replace this with the built image name
+          image: REPLACE_IMAGE
+          imagePullPolicy: Always
+          env:
+            - name: WATCH_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: OPERATOR_NAME
+              value: "visitors-helm-chartops"

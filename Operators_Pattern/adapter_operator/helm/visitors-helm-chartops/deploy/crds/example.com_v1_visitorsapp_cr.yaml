@@ -1,0 +1,12 @@
+apiVersion: example.com/v1
+kind: VisitorsApp
+metadata:
+  name: example-visitorsapp
+spec:
+  # Default values copied from <project_dir>/helm-charts/visitors-helm/values.yaml
+  
+  backend:
+    size: 1
+  frontend:
+    title: Helm Installed Visitors Site
+  

@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: visitors-backend
+spec:
+  replicas: {{ .Values.backend.size }}
+  selector:
+    matchLabels:
+      app: visitors
+      tier: backend
+  template:
+    metadata:
+      labels:
+        app: visitors
+        tier: backend
+    spec:
+      containers:
+        - name: visitors-backend
+          image: "jdob/visitors-service:1.0.0"
+          imagePullPolicy: Always
+          ports:
+            - name: visitors
+              containerPort: 8000
+          env:
+            - name: MYSQL_DATABASE
+              value: visitors
+            - name: MYSQL_SERVICE_HOST
+              value: mysql-service
+            - name: MYSQL_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-auth
+                  key: username
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-auth
+                  key: password

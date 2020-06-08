@@ -3673,3 +3673,231 @@
 
     The ClusterRoleBinding grants capabilities to a user across the entire cluster, in all namespaces. Operators charged with cluster-wide responsibilities will often tie a ClusterRole to an
     Operator service account with a ClusterRoleBinding.
+
+    The Operator Framework
+    There is inevitable complexity in developing an Operator, and in managing its distri‐ bution, deployment, and lifecycle. The Red Hat Operator Framework makes it sim‐ pler to create and distribute
+    Operators. It makes building Operators easier with a software development kit (SDK) that automates much of the repetitive implementa‐ tion work. The Framework also provides mechanisms for deploying
+    and managing Operators. Operator Lifecycle Manager (OLM) is an Operator that installs, manages, and upgrades other Operators. Operator Metering is a metrics system that accounts for Operators’
+    use of cluster resources. This chapter gives an overview of these three key parts of the Framework to prepare you to use those tools to build and distribute an example Operator. Along the way,
+    you’ll install the operator-sdk command-line tool, the primary interface to SDK features.
+
+    Operator Maturity Model
+    The Operator Maturity Model, depicted in Figure 4-1, sketches a way to think about different levels of Operator functionality. You can begin with a minimum viable prod‐ uct that installs its
+    operand, then add lifecycle management and upgrade capabilities, iterating over time toward complete automation for your application.
+
+![](./static/operators_maturity.png)
+
+    + Installing the Operator SDK Tool :
+
+    Binary installation
+    To install a binary for your operating system, download operator-sdk from the Kubernetes SDK repository (https://oreil.ly/TTnC6), make it executable, and move it into a directory in your $PATH.
+    The program is statically linked, so it’s ready to run on those platforms for which a release is available. At the time of this writing, the project supplies builds for macOS and Linux operating
+    systems on the x86-64 architecture.
+
+    Installing from source
+    To get the latest development version, or for platforms with no binary distribution, build operator-sdk from source. We assume you have git and go installed:
+    https://docs.openshift.com/container-platform/4.1/applications/operator_sdk/osdk-getting-started.html
+
+    $ export GOPATH=/Users/mdrahali/go/
+    $ mkdir -p $GOPATH/src/github.com/operator-framework
+    $ cd $GOPATH/src/github.com/operator-framework
+    $ git clone https://github.com/operator-framework/operator-sdk
+    $ cd ./operator-sdk
+    $ git checkout master
+    $ export GO111MODULE="on"
+    $ make tidy
+    $ make install
+    A successful build process writes the operator-sdk binary to your $GOPATH/bin directory. Run operator-sdk version to check it is in your $PATH.
+
+    These are the two most common and least dependent ways to get the SDK tool. Check the project’s install documentation (https://oreil.ly/fAC1b) for other options.
+    The subsequent examples in this book use version series 0.11.x of operator-sdk.
+
+    # Alternative to Install operator-framework
+    $ brew install operator-sdk
+    $ operator-sdk version
+
+    + Operator Lifecycle Manager takes the Operator pattern one level up the stack: it’s an Operator that acquires, deploys, and
+      manages Operators on a Kubernetes cluster. Like an Operator for any application, OLM extends Kubernetes by way of custom resources
+      and custom controllers so that Operators, too, can be managed declaratively, with Kubernetes tools, in terms of the Kubernetes API.
+
+    + OLM defines a schema for Operator metadata, called the Cluster Service Version (CSV), for describing an Operator and its dependencies.
+      Operators with a CSV can be listed as entries in a catalog available to OLM running on a Kubernetes cluster. Users then subscribe
+      to an Operator from the catalog to tell OLM to provision and manage a desired Operator. That Operator, in turn, provisions and manages
+      its appli‐ cation or service on the cluster.
+
+    + Based on the description and parameters an Operator provides in its CSV, OLM can manage the Operator over its lifecycle: monitoring its state,
+      taking actions to keep it running, coordinating among multiple instances on a cluster, and upgrading it to new versions. The Operator, in turn,
+      can control its application with the latest automation features for the app’s latest versions.
+
+    Operator Metering
+    Operator Metering is a system for analyzing the resource usage of the Operators run‐ ning on Kubernetes clusters. Metering analyzes
+    Kubernetes CPU, memory, and other resource metrics to calculate costs for infrastructure services. It can also examine application-specific metrics,
+    such as those required to bill application users based on usage. Metering provides a model for ops teams to map the costs of a cloud service or a
+    cluster resource to the application, namespace, and team consuming it. It’s a plat‐ form atop which you can build customized reporting specific to
+    your Operator and the application it manages, helping with three primary activities:
+
+    Budgeting
+    When using Operators on their clusters, teams can gain insight into how infra‐ structure resources are used, especially in autoscaled clusters or hybrid
+    cloud deployments, helping improve projections and allocations to avoid waste.
+
+    Billing
+    When you build an Operator that provides a service to paying customers, resource usage can be tracked by billing codes or labels that reflect the internal
+    structure of an Operator and application to calculate accurate and itemized bills.
+
+    Metrics aggregation
+    Service usage and metrics can be viewed across namespaces or teams. For exam‐ ple, it can help you analyze the resources consumed by a PostgreSQL database
+    Operator running many database server clusters and very many databases for dif‐ ferent teams sharing a large Kubernetes cluster.
+
+    ++ Make an Operator to Manage an Application
+
+    Sample Application: Visitors Site
+
+    Application Overview
+    The Visitors Site tracks information about each request to its home page. Each time the page is refreshed, an entry is stored with details about the client,
+    backend server, and timestamp. The home page displays a list of the most recent visits
+
+![](./static/visitor_site_overview.png)
+![](./static/visitor_site_archi.png)
+
+    - Installation with Manifests
+    Each component in the Visitors Site requires two Kubernetes resources:
+
+    Deployment
+    Contains the information needed to create the containers, including the image name, exposed ports,
+    and specific configuration for a single deployment.
+
+    Service
+    A network abstraction across all containers in a deployment. If a deployment is scaled up beyond one container,
+    which we will do with the backend, the service sits in front and balances incoming requests across all of the replicas.
+
+    A third resource is used to store the authentication details for the database. The MySQL container uses this secret when it is started, and the
+    backend containers use it to authenticate against the database when making requests.
+
+    Additionally, there are configuration values that must be consistent between compo‐ nents. For example, the backend needs to know the name
+    of the database service to connect to. When deploying applications through manifests, awareness of these rela‐ tionships is required to ensure
+    that the values line up.
+
+    Deploying MySQL
+    The secret must be created before the database is deployed, since it is used during the container startup:
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: mysql-auth (1)
+        type: Opaque
+        stringData:
+          username: visitors-user (2)
+          password: visitors-pass (2)
+
+    (1) When the database and backend deployments use the secret, it is referred to by this name.
+    (2) For simplicity in this example, the username and password are defaulted to test‐ ing values.
+
+    # deploy manifests
+
+    $ cd visitor_site-webapp
+    $ kubectl apply -f database.yaml
+    $ kubectl apply -f backend.yaml
+    $ kubectl apply -f frontend.yaml
+    $ minikube ip
+
+    - check -> 192.168.64.11:30686
+
+    - Cleaning up
+    $ kubectl delete -f .
+
+    + Adapter Operators :
+
+    + Helm :
+
+    - Creating a new chart
+
+    To create an Operator with the skeleton for a new Helm chart, use the --type=helm argument. The following example creates the basis of a Helm Operator for the Visitors
+    Site application:
+
+    $ export OPERATOR_NAME=visitors-helm-operator
+    $ operator-sdk new $OPERATOR_NAME --api-version=example.com/v1 \
+          --kind=VisitorsApp --type=helm
+
+    + visitors-helm-operator is the name of the generated Operator. The other two argu‐ ments, --api-version and --kind, describe the CR this Operator manages. These arguments
+    result in the creation of a basic CRD for the new type.
+
+    The SDK creates a new directory with the same name as $OPERATOR_NAME, which con‐ tains all of the Operator’s files. There are a few files and directories to note:
+
+        deploy/
+        This directory contains Kubernetes template files that are used to deploy and configure the Operator, including the CRD, the Operator deployment resource itself, and the necessary RBAC resources for the Operator to run.
+
+        helm-charts/
+        This directory contains a skeleton directory structure for a Helm chart with the same name as the CR kind. The files within are similar to those the Helm CLI creates when it initializes a new chart, including a values.yaml file. A new chart is added to this directory for each new CR type the Operator manages.
+
+        watches.yaml
+        This file maps each CR type to the specific Helm chart that is used to handle it.
+
+    - At this point, everything is in place to begin to implement your chart. However, if you already have a chart written, there is an easier approach.
+
+    Use an existing chart
+    The process for building an Operator from an existing Helm chart is similar to that for creating an Operator with a new chart. In addition to the --type=helm argument,
+    there are a few additional arguments to take into consideration:
+
+    --helm-chart
+        Tells the SDK to initialize the Operator with an existing chart. The value can be:
+        • A URL to a chart archive
+        • The repository and name of a remote chart
+        • The location of a local directory
+
+    --helm-chart-repo
+        Specifies a remote repository URL for the chart (unless a local directory is other‐ wise specified).
+
+    --helm-chart-version
+        Tells the SDK to fetch a specific version of the chart. If this is omitted, the latest available version is used.
+
+    Use an existing chart
+        The process for building an Operator from an existing Helm chart is similar to that for creating an Operator with a new chart.
+        In addition to the --type=helm argument, there are a few additional arguments to take into consideration:
+
+        --helm-chart
+        Tells the SDK to initialize the Operator with an existing chart. The value can be:
+        • A URL to a chart archive
+        • The repository and name of a remote chart
+        • The location of a local directory
+
+        --helm-chart-repo
+        Specifies a remote repository URL for the chart (unless a local directory is other‐ wise specified).
+
+        --helm-chart-version
+    Tells the SDK to fetch a specific version of the chart. If this is omitted, the latest available version is used.
+    When using the --helm-chart argument, the --api-version and --kind arguments become optional. The api-version is defaulted to charts.helm.k8s.io/v1alpha1
+    and the kind name will be derived from the name of the chart. However, as the api- version carries information about the CR creator, we recommend that you
+    explicitly populate these values appropriately.
+
+
+    $ OPERATOR_NAME=visitors-helm-chartops
+
+    $ cd ./helm
+    $ operator-sdk new $OPERATOR_NAME --api-version=example.com/v1 \
+    --kind=VisitorsApp --type=helm --helm-chart=visitors-helm
+
+    Running the Helm Operator
+    An Operator is delivered as a normal container image. However, during the develop‐ ment and testing cycle, it is often easier to skip the image creation process and simply run the Operator outside of the cluster. In this section we describe those steps
+
+    1. Create a local watches file. The generated watches.yaml file refers to a specific path where the Helm chart is found. This path makes sense in the deployed Operator scenario; the image creation process takes care of copying the chart to the necessary
+    location. This watches.yaml file is still required when running the Operator outside of the cluster, so you need to manually make sure your chart can be found at that location.
+
+    The simplest approach is to copy the existing watches.yaml file, which is located in the root of the Operator project:
+
+    $ cp watches.yaml local-watches.yaml
+
+    In the local-watches.yaml file, edit the chart field to contain the full path of the chart on your machine. Remember the name of the local watches file;
+    you will need it later when you start the Operator process.
+    2. Create the CRDs in the cluster using the kubectl command:
+
+    $ kubectl apply -f deploy/crds/*_crd.yaml
+
+    3. Once you have finished creating the CRDs, start the Operator using the following SDK command:
+
+    $ operator-sdk run local --watches-file ./local-watches.yaml
+    $ check listening url ->  0.0.0.0:8383
+
+    $ kubectl delete -f deploy/crds/*_cr.yaml
+
+    NOTE : Repeat thne same process with ansible.
+
+

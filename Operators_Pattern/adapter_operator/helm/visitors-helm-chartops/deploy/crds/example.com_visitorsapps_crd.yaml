@@ -1,0 +1,22 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: visitorsapps.example.com
+spec:
+  group: example.com
+  names:
+    kind: VisitorsApp
+    listKind: VisitorsAppList
+    plural: visitorsapps
+    singular: visitorsapp
+  scope: Namespaced
+  versions:
+  - name: v1
+    schema:
+      openAPIV3Schema:
+        type: object
+        x-kubernetes-preserve-unknown-fields: true
+    served: true
+    storage: true
+    subresources:
+      status: {}
