@@ -3901,3 +3901,85 @@
     NOTE : Repeat thne same process with ansible.
 
     + Operators in Go with the Operator SDK :
+
+    - the high–level steps to create an operator using golang:
+    1. Create the necessary code that will tie in to Kubernetes and allow it to run the Operator as a controller.
+    2. Create one or more CRDs to model the application’s underlying business logic and provide the API for users to interact with.
+    3. Create a controller for each CRD to handle the lifecycle of its resources.
+    4. Build the Operator image and create the accompanying Kubernetes manifests to deploy the Operator and its RBAC components (service accounts, roles, etc.).
+
+
+    - While you can write all these pieces manually, the Operator SDK provides commands that will automate the creation of much of the supporting code, allowing you to
+      focus on implementing the actual business logic of the Operator.
+
+
+    Initializing the Operator
+    Since the Operator is written in Go, the project skeleton must adhere to the language conventions. In particular, the Operator code must be
+    located in your $GOPATH.
+
+    $ export GOPATH=/Users/MDRAHALI/go/src
+
+    The SDK’s new command creates the necessary base files for the Operator. If a specific Operator type is not specified, the command generates a Go-based Operator project:
+
+    $ export OPERATOR_NAME=visitors-operator-1
+    $ operator-sdk new $OPERATOR_NAME --repo=$GOPATH
+
+    Operator Scope
+    One of the first decisions you need to make is the scope of the Operator. There are two options:
+    Namespaced
+    Limits the Operator to managing resources in a single namespace
+    Cluster
+    Allows the Operator to manage resources across the entire cluster
+    By default, Operators that the SDK generates are namespace-scoped.
+    While namespace-scoped Operators are often preferable, changing an SDK–gener‐ ated Operator to be cluster-scoped is possible. Make the following changes
+    to enable the Operator to work at the cluster level:
+    deploy/operator.yaml
+    • Change the value of the WATCH_NAMESPACE variable to "", indicating all namespa‐ ces will be watched instead of only the namespace in which
+    the Operator pod is deployed.
+
+    deploy/role.yaml
+    • Change the kind from Role to ClusterRole to enable permissions outside of the Operator pod’s namespace.
+
+    deploy/role_binding.yaml
+    • Change the kind from RoleBinding to ClusterRoleBinding.
+    • Under roleRef, change the kind to ClusterRole.
+    • Under subjects, add the key namespace with the value being the namespace in which the Operator pod is deployed.
+    Additionally, you need to update the generated CRDs (discussed in the following sec‐ tion) to indicate that the definition is cluster-scoped:
+    • In the spec section of the CRD file, change the scope field to Cluster instead of the default value of Namespaced.
+    • In the _types.go file for the CRD, add the tag // +genclient:nonNamespaced above the struct for the CR (this will have the same name as the kind field you used to create it). This ensures that future calls to the Operator SDK to refresh the CRD will not reset the value to the default.
+    For example, the following modifications to the VisitorsApp struct indicate that it is cluster-scoped:
+        // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+    // VisitorsApp is the Schema for the visitorsapps API
+    // +k8s:openapi-gen=true
+    // +kubebuilder:subresource:status
+    // +genclient:nonNamespaced
+    type VisitorsApp struct {
+
+    Custom Resource Definitions
+    We discussed the role of CRDs when creating an Operator. You can add new CRDs to an Operator using the SDK’s add api command. This command,
+    run from the Operator project root directory, generates the CRD for the Visitors Site example used in this book (using the arbitrary “example.com”
+    for demonstration purposes):
+
+
+    $ cd visitors-operator-1  # to run the commands we should point to the project directory
+    $ operator-sdk add api --api-version=example.com/v1 --kind=VisitorsApp
+
+    The command generates a number of files. In the following list, note how both the api-version and CR type name (kind) contribute to the generated
+    names (file paths are relative to the Operator project root):
+
+    deploy/crds/example_v1_visitorsapp-cr.yaml
+    This is an example CR of the generated type. It is prepopulated with the appro‐ priate api-version and kind, as well as a name for the resource.
+    You’ll need to fill out the spec section with values relevant to the CRD you created.
+
+    deploy/crds/example_v1_visitorsapp_crd.yaml
+    This file is the beginning of a CRD manifest. The SDK generates many of the fields related to the name of the resource type (such as plural and list variations),
+    but you’ll need to add in the custom fields specific to your resource type. Appen‐ dix B goes into detail on fleshing out this file.
+
+    pkg/apis/example/v1/visitorsapp_types.go
+    This file contains a number of struct objects that the Operator codebase lever‐ ages. This file, unlike many of the generated Go files, is intended to be edited.
+
+    The add api command builds the appropriate skeleton code, but before you can use the resource type, you must define the set of configuration values that are
+    specified when creating a new resource. You’ll also need to add a description of the fields the CR will use when reporting its status. You’ll add these sets of
+    values in the definition template itself as well as the Go objects.
+
+
