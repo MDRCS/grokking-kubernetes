@@ -1,0 +1,21 @@
+apiVersion: scheduling.k8s.io/v1beta1
+kind: PriorityClass
+metadata:
+name: high-priority
+value: 1000
+globalDefault: false
+description: This is a very high priority Pod class
+
+---
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: random-generator
+  labels:
+    env: random-generator
+spec:
+  containers:
+  - image: k8spatterns/random-generator:1.0
+    name: random-generator
+  priorityClassName: high-priority

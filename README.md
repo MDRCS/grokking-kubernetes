@@ -1843,6 +1843,10 @@
 
     IMPORTANT !! : In each repo we should have three files docker , jenkins, kubernetes (Dockerfile, jenkins.yaml, deploy.yml).
 
+    + Jenkins -> job -> execute shell -> add this script
+
+![](./static/jenkins_job_deploy_kub8.png)
+
 ![](./static/target-process.png)
 
     + Another Feature of Jenkins is that we can do CI/CD for all the organization
@@ -4160,3 +4164,113 @@
     Contributing to Opensource :
 
     + There are a variety of ways to contribute to their development, rang‐ ing from something as simple as submitting a bug report to becoming an active developer.
+
+### + Kubernetes Patterns - Reusable Elements for Designing Cloud-Native Applications
+
+![](./static/kub8_components.png)
+
+    + Foundational Patterns
+
+    1- Predictable Demands
+
+    Problem
+    Kubernetes can manage applications written in different programming languages as long as the application can be run in a container. However, different languages have different resource
+    requirements. Typically, a compiled language runs faster and often requires less memory compared to just-in-time runtimes or interpreted languages. Considering that many modern programming
+    languages in the same category have similar resource requirements, from a resource consumption point of view, more important aspects are the domain, the business logic of an application, and
+    the actual implementation details.
+
+    It is difficult to predict the amount of resources a container may need to function optimally, and it is the developer who knows the resource expectations of a service implementation
+    (discovered through testing). Some services have a fixed CPU and memory consumption profile, and some are spiky. Some services need persistent storage to store data; some legacy services
+    require a fixed port number on the host system to work correctly. Defining all these application characteristics and passing them to the managing platform is a fundamental prerequisite for
+    cloud-native applications.
+    Besides resource requirements, application runtimes also have dependencies on platform-managed capabilities like data storage or application configuration.
+
+    Solution
+    Knowing the runtime requirements for a container is important mainly for two rea‐ sons. First, with all the runtime dependencies defined and resource demands envis‐ aged, Kubernetes can
+    make intelligent decisions for where to place a container on the cluster for most efficient hardware utilization. In an environment with shared resour‐ ces among a large number of processes
+    with different priorities, the only way for a successful coexistence is to know the demands of every process in advance. However, intelligent placement is only one side of the coin.
+
+    The second reason container resource profiles are essential is capacity planning. Based on the particular service demands and the total number of services, we can do some capacity planning
+    for the different environments and come up with the most cost-effective host profiles to satisfy the entire cluster demand. Service resource pro‐ files and capacity planning go hand-to-hand
+    for successful cluster management in the long term.
+
+    Runtime Dependencies
+    One of the most common runtime dependencies is file storage for saving application state. Container filesystems are ephemeral and lost when a container is shut down. Kubernetes offers volume as a
+    Pod-level storage utility that survives container restarts.
+    The most straightforward type of volume is emptyDir, which lives as long as the Pod lives and when the Pod is removed, its content is also lost. The volume needs to be backed by some other
+    kind of storage mechanism to have a volume that survives Pod restarts. If your application needs to read or write files to such long-lived storage, you have to declare that dependency explicitly
+    in the container definition using volumes,
+
+    check -> ./Kubernetes_patterns/predictable_demands/volumes_pvc.yaml
+
+    Resources profile :
+    Making the distinction between compressible and incompressible resources is impor‐ tant. If your containers consume too many compressible resources such as CPU, they are throttled, but if they use
+    too many incompressible resources (such as memory), they are killed (as there is no other way to ask an application to release allocated memory).
+
+    Depending on whether you specify the requests, the limits, or both, the platform offers a different kind of Quality of Service (QoS).
+
+    check -> ./Kubernetes_patterns/predictable_demands/resources_limits.yaml
+
+    Best-Effort
+    Pod that does not have any requests and limits set for its containers. Such a Pod is considered as the lowest priority and is killed first when the node where the Pod is placed runs out of incompressible resources.
+
+    Burstable
+    Pod that has requests and limits defined, but they are not equal (and limits is larger than requests as expected). Such a Pod has minimal resource guarantees, but is also willing to consume more resources up to its limit
+    when available. When the node is under incompressible resource pressure, these Pods are likely to be killed if no Best-Effort Pods remain.
+
+    Guaranteed
+    Pod that has an equal amount of request and limit resources. These are the highest-priority Pods and guaranteed not to be killed before Best-Effort and Bur‐ stable Pods.
+
+    Pod Priority
+    We created a PriorityClass, a non-namespaced object for defining an integer-based priority. Our PriorityClass is named high-priority and has a priority of 1,000. Now we can assign this priority to Pods by its name as
+    priorityClassName: high- priority. PriorityClass is a mechanism for indicating the importance of Pods relative to each other, where the higher value indicates more important Pods.
+
+    Here comes the critical part. If there are no nodes with enough capacity to place a Pod, the scheduler can preempt (remove) lower-priority Pods from nodes to free up resources and place Pods with higher priority. As a result,
+    the higher-priority Pod might be scheduled sooner than Pods with a lower priority if all other scheduling requirements are met. This algorithm effectively enables cluster administrators to control which Pods are more critical
+    workloads and place them first by allowing the scheduler to evict Pods with lower priority to make room on a worker node for higher-priority Pods. If a Pod cannot be scheduled, the scheduler continues with the placement of other
+    lower-priority Pods.
+
+    check -> ./Kubernetes_patterns/predictable_demands/pod-priority.yaml
+
+    Pod QoS (discussed previously) and Pod priority are two orthogonal features that are not connected and have only a little overlap. QoS is used primarily by the Kubelet to preserve node stability when available compute resources are
+    low. The Kubelet first considers QoS and then PriorityClass of Pods before eviction. On the other hand, the scheduler eviction logic ignores the QoS of Pods entirely when choosing preemption targets. The scheduler attempts to pick
+    a set of Pods with the lowest priority possible that satisfies the needs of higher-priority Pods waiting to be placed.
+
+    Another concern is a malicious or uninformed user who creates Pods with the high‐ est possible priority and evicts all other Pods. To prevent that, ResourceQuota has been extended to support PriorityClass, and larger priority numbers
+    are reserved for critical system Pods that should not usually be preempted or evicted.
+
+    on a nonproduction cluster, you may have mainly Best-Effort and Bursta‐ ble containers. In such a dynamic environment, many containers are starting up and shutting down at the same time, and even if a container gets killed by the platform
+    during resource starvation, it is not fatal. On the production cluster where we want things to be more stable and predictable, the containers may be mainly of the Guar‐ anteed type and some Burstable. If a container gets killed, that is
+    most likely a sign that the capacity of the cluster should be increased.
+
+![](./static/capacity_planning.png)
+
+    + TIPS :
+        # Port forward to Pod
+        kubectl port-forward pod/random-generator 8080:8080 &
+
+        # Send a request to our service
+        curl -s http://localhost:8080 | jq .
+
+        {
+          "random": 79003229,
+          "pattern": "Predictable Demands",
+          "id": "d88cc0e5-c7f2-4e98-8073-ed76151b5218",
+          "version": "1.0"
+        }
+
+        # Check whether the log has been written locally
+        cat ./logs/random.log
+
+        16:52:44.734,fe870020-fcab-42bf-b745-db65ec1cc51f,2137264413
+
+        # Killt the 'kubectl port-forward' first
+        kill %1
+
+        # Delete the plain pod
+        kubectl delete pod/random-generator
+
+        # Delete PV & PVC
+        kubectl delete -f https://k8spatterns.io/PredictableDemands/pv-and-pvc.yml
+
+
