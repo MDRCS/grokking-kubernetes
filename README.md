@@ -3982,4 +3982,148 @@
     specified when creating a new resource. You’ll also need to add a description of the fields the CR will use when reporting its status. You’ll add these sets of
     values in the definition template itself as well as the Go objects.
 
+    Operator Lifecycle Manager
+    We begin this chapter by introducing OLM and its interfaces, including both the CRDs that end users will interact with inside of the cluster and the packaging
+    format it uses for Operators. After that, we will show you OLM in action, using it to connect to OperatorHub.io to install an Operator. We conclude the chapter
+    with a developer- focused exploration of the process of writing the necessary metadata files to make an Operator available to OLM and test it against a local cluster.
 
+    OLM Custom Resources
+    As you know, the CRDs owned by an Operator make up that Operator’s API. So, it makes sense to look at each of the CRDs that are installed by OLM and explore their uses.
+
+
+    ClusterServiceVersion
+    The ClusterServiceVersion (CSV) is the primary metadata resource that describes an Operator. Each CSV represents a version of an Operator and contains the following:
+    • General metadata about the Operator, including its name, version, description, and icon
+    • Operator installation information, describing the deployments that are created and the permissions that are required
+    • The CRDs that are owned by the Operator as well as references to any CRDs the Operator is dependent on
+    • Annotations on the CRD fields to provide hints to users on how to properly specify values for the fields
+
+    When learning about CSVs, it can be useful to relate the concepts to that of a tradi‐ tional Linux system. You can think of a CSV as analogous to a Linux package,
+    such as a Red Hat Package Manager (RPM) file. Like an RPM file, the CSV contains informa‐ tion on how to install the Operator and any dependencies it requires.
+    Following this analogy, you can think of OLM as a management tool similar to yum or DNF.
+
+    Another important aspect to understand is the relationship between a CSV and the Operator deployment resource it manages. Much like how a deployment describes
+    the “pod template” for the pods it creates, a CSV contains a “deployment template” for the deployment of the Operator pod. This is a formal ownership in the Kubernetes
+    sense of the word; if the Operator deployment is deleted, the CSV will recreate it to bring the cluster back to the desired state, similar to how a deployment will cause
+    deleted pods to be recreated.
+
+    CatalogSource
+    A CatalogSource contains information for accessing a repository of Operators. OLM provides a utility API named packagemanifests for querying catalog sources,
+    which provides a list of Operators and the catalogs in which they are found. It uses resources of this kind to populate the list of available Operators.
+    The following is an example of using the packagemanifests API against the default catalog source:
+
+    $ kubectl -n olm get packagemanifests
+
+    Subscription
+    End users create a subscription to install, and subsequently update, the Operators that OLM provides. A subscription is made to a channel, which is a stream of Operator versions,
+    such as “stable” or “nightly.”
+    To continue with the earlier analogy to Linux packages, a subscription is equivalent to a command that installs a package, such as yum install. An installation command through
+    yum will typically refer to the package by name rather than to a specific ver‐ sion, leaving the determination of the latest package to yum itself. In the same way, a subscription
+    to an Operator by name and its channel lets OLM resolve the version based on what is available in that particular channel.
+
+
+    Users configure a subscription with an approval mode. This value, set to either manual or automatic, tells OLM if manual user review is required before an Operator is installed.
+    If set to manual approval, OLM-compatible user interfaces present the user with the details of the resources OLM will create during the Operator installation. The user has the option
+    of approving or rejecting the Operator, and OLM takes the appropriate next steps.
+
+    InstallPlan
+    A subscription creates an InstallPlan, which describes the full list of resources that OLM will create to satisfy the CSV’s resource requirements. For subscriptions set to require manual
+    approval, the end user sets an approval on this resource to inform OLM that the installation should proceed. Otherwise, users do not need to explicitly interact with these resources.
+
+    OperatorGroup
+    End users control Operator multitenancy through an OperatorGroup. These designate namespaces that may be accessed by an individual Operator. In other words, an Operator belonging
+    to an OperatorGroup will not react to custom resource changes in a namespace not indicated by the group.
+    Although you can use OperatorGroups for fine-grained control for a set of namespa‐ ces, they are most commonly used in two ways:
+    • To scope an Operator to a single namespace
+    • To allow an Operator to run globally across all namespaces
+
+    For example, the following definition creates a group that scopes Operators within it to the single namespace ns-alpha:
+        apiVersion: operators.coreos.com/v1alpha2
+        kind: OperatorGroup
+        metadata:
+          name: group-alpha
+          namespace: ns-alpha
+        spec:
+          targetNamespaces:
+          - ns-alpha
+
+    Omitting the designator entirely results in a group that will cover all namespaces in the cluster:
+
+        apiVersion: operators.coreos.com/v1alpha2
+        kind: OperatorGroup
+        metadata:
+          name: group-alpha
+          namespace: ns-alpha
+
+    Note that, as a Kubernetes resource, the OperatorGroup must still reside in a spe‐ cific namespace.
+    However, the lack of the targetNamespaces designation means the OperatorGroup will cover all namespaces.
+
+    Installing OLM
+    https://github.com/operator-framework/operator-lifecycle-manager/releases
+
+    $ curl -L https://github.com/operator-framework/operator-lifecycle-manager/releases/download/0.15.1/install.sh -o install.sh
+    $ chmod +x install.sh
+    $ ./install.sh 0.15.1
+
+    As of the current release (0.11.0), the installation performs two primary tasks.
+    To begin, you’ll need to install the CRDs required by OLM. These function as the API into OLM and provide the ability to
+    configure external sources that provide Opera‐ tors and the cluster-side resources used to make those Operators available to users.
+    You create these through the kubectl apply command, as follows:
+
+    $ kubectl apply -f https://github.com/operator-framework/operator-lifecycle-manager/releases/download/0.15.1/crds.yaml
+    The second step is to create all of the Kubernetes resources that make up OLM itself. These include the Operators that will drive OLM as well as the necessary RBAC resources (ServiceAccounts, ClusterRoles, etc.) for it to function.
+
+    As with the CRD creation, you perform this step through the kubectl apply command:
+    $ kubectl apply -f https://github.com/operator-framework/operator-lifecycle-manager/releases/download/0.15.1/olm.yaml
+
+    You can verify the installation by looking at the resources that were created:
+    $ kubectl get ns olm
+    $ kubectl get pods -n olm
+    $ kubectl get crd
+
+    Using OLM
+    Installing OLM creates a default catalog source in the olm namespace. You can verify that this source, named operatorhubio-catalog, exists by using the CLI:
+    $ kubectl get catalogsource -n olm
+
+    You can find further details about the source by using the describe command:
+    $ kubectl describe catalogsource/operatorhubio-catalog -n olm
+
+    This catalog source is configured to read all of the Operators hosted on OperatorHub.io. You can use the packagemanifest utility API to get a list of the Operators that are found:
+    $ kubectl get packagemanifest -n olm
+
+    For this example, you’ll install the etcd Operator. The first step is to define an Opera‐ torGroup to dictate which namespaces the Operator will manage. The etcd Operator you’re going
+    to be using is scoped to a single namespace
+
+    $ kubectl apply -f all-operatorsgroup.yaml
+
+    The creation of a subscription triggers the installation of an Operator. Before you can do that, you need to determine which channel you want to subscribe to. OLM pro‐ vides channel
+    information in addition to a wealth of other details about the Operator.
+
+    You can view this information by using the packagemanifest API:
+    $ kubectl describe packagemanifest/etcd -n olm
+
+    There are two directories of note:
+
+    bundle
+    This directory contains the actual OLM bundle files, including the CSV, CRD, and package files. You can use the process outlined in this chapter to build and deploy the Visitors
+    Site Operator using these files.
+
+    testing
+    This directory contains the additional resources required to deploy an Operator from OLM. These include the OperatorSource, OperatorGroup, subscription, and a sample custom
+
+    resource to test the Operator.
+    Readers are welcome to submit feedback, issues, and questions on these files through the Issues tab in GitHub.
+
+    SRE for Every Application
+    SRE began at Google in response to the challenges of running large systems with ever-increasing numbers of users and features. A key SRE objective is allowing serv‐ ices to grow
+    without forcing the teams that run them to grow in direct proportion.
+
+    Operators and the Operator Framework make it easier to implement this kind of automation for applications that run on Kubernetes. Kubernetes orchestrates service deployments,
+    making some of the work of horizontal scaling or failure recovery auto‐ matic for stateless applications. It represents distributed system resources as API abstractions. Using
+    Operators, developers can extend those practices to complex applications.
+
+     SREs write code to fix those bugs. Operators are a logical place to program those fixes for a broad class of applications on Kubernetes. An Operator reduces human intervention
+     bugs by auto‐ mating the regular chores that keep its application running.
+
+    + Work that could be automated by software should be automated by software if it is also repetitive. The cost of building software to perform a repetitive task can be amortized
+      over a lifetime of repetitions.
