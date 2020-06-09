@@ -4367,4 +4367,41 @@
 
 ![](./static/graphs_deploy_strategies.png)
 
+    + Health Probe :
+
+    Liveness Probes
+    If your application runs into some deadlock, it is still considered healthy from the process health check’s point of view. To detect this kind
+    of issue and any other types of failure according to your application business logic, Kubernetes has liveness probes— regular checks performed
+    by the Kubelet agent that asks your container to confirm it is still healthy. It is important to have the health check performed from the outside
+    rather than the in application itself, as some failures may prevent the application watchdog from reporting its failure. Regarding corrective action,
+    this health check is similar to a process health check, since if a failure is detected, the container is restar‐ ted. However, it offers more flexibility
+    regarding what methods to use for checking the application health, as follows:
+
+    • HTTP probe performs an HTTP GET request to the container IP address and expects a successful HTTP response code between 200 and 399.
+    • A TCP Socket probe assumes a successful TCP connection.
+    • An Exec probe executes an arbitrary command in the container kernel name‐ space and expects a successful exit code (0).
+
+    check -> ./Kubernetes_patterns/health_probe/liveness_check.yaml
+
+    + HTTP probe to a health-check endpoint
+    + Wait 30 seconds before doing the first liveness check to give the application some time to warm up
+
+    ++ However, keep in mind that the result of not passing a health check is restarting of your container. If restarting your container does not help,
+       there is no benefit to having a failing health check as Kubernetes restarts your con‐ tainer without fixing the underlying issue.
+
+    Readiness Probes
+    Kubernetes has readiness probes. The methods for perform‐ ing readiness checks are the same as liveness checks (HTTP, TCP, Exec), but the corrective
+    action is different. Rather than restarting the container, a failed readiness probe causes the container to be removed from the service endpoint and
+    not receive any new traffic. Readiness probes signal when a container is ready so that it has some time to warm up before getting hit with requests from the service.
+
+    check -> ./Kubernetes_patterns/health_probe/readiness_check.yaml
+
+    Apart from logging to standard streams, it is also a good practice to log the reason for exiting a container to /dev/termination-log. This location is the place
+    where the con‐ tainer can state its last will before being permanently vanished. Figure 4-1 shows the possible options for how a container can communicate with the runtime platform.
+
+![](./static/termination-log.png)
+
+    However, any container that is aiming to become a cloud- native citizen must provide APIs for the runtime environment to observe the con‐ tainer health and act accordingly. This support
+    is a fundamental prerequisite for automation of the container updates and lifecycle in a unified way, which in turn improves the system’s resilience and user experience. In practical terms,
+    that means, as a very minimum, your containerized application must provide APIs for the differ‐ ent kinds of health checks (liveness and readiness).
 
