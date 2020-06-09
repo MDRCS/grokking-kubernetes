@@ -4307,5 +4307,64 @@
         If you check your Pods now with kubectl get pods and kubectl describe, do you see what you expect ? Also don’t forget the check the logs, too !
 
 
+    + Declarative Deployment :
+
+    - Rolling Deployment :
+
+    check -> ./Kubernetes_patterns/declarative-deploy/upgrade_deployment.yaml
+
+    maxSurge: the maximum number of pods that can be created over the desired number of pods. Again this can be an absolute number or a percentage of the replicas count; the default is 25%.
+
+![](./static/rolling_update_deploy.png)
+
+    maxSurge : 1
+    maxUnavailibale : 1
+
+    Imperative vs Declarative deployment :
+
+    • Deployment is a Kubernetes resource object whose status is entirely managed by Kubernetes internally. The whole update process is performed on the server side without client interaction.
+    • The declarative nature of Deployment makes you see how the deployed state should look rather than the steps necessary to get there.
+    • The Deployment definition is an executable object, tried and tested on multiple environments before reaching production.
+    • The update process is also wholly recorded, and versioned with options to pause, continue, and roll back to previous versions.
+
+    Fixed Deployment
+    A RollingUpdate strategy is useful for ensuring zero downtime during the update process. However, the side effect of this approach is that during the update process, two versions of the
+    container are running at the same time. That may cause issues for the service consumers, especially when the update process has introduced backward- incompatible changes in the service APIs
+    and the client is not capable of dealing with them.
+
+![](./static/recreate_strategy_deployment.png)
+
+    The Recreate strategy has the effect of setting maxUnavailable to the number of declared replicas. This means it first kills all containers from the current version and then starts all new
+    containers simultaneously when the old containers are evicted. The result of this sequence of actions is that there is some downtime while all con‐ tainers with old versions are stopped, and
+    there are no new containers ready to han‐ dle incoming requests. On the positive side, there won’t be two versions of the containers running at the same time, simplifying the life of service
+    consumers to han‐ dle only one version at a time.
+
+    Blue-Green Release
+
+    A Blue-Green deployment needs to be done manually if no extensions like a Service Mesh or Knative is used, though. Technically it works by creating a second Deploy‐ ment with the latest version
+    of the containers (let’s call it green) not serving any requests yet. At this stage, the old Pod replicas (called blue) from the original Deploy‐ ment are still running and serving live requests.
+    Once we are confident that the new version of the Pods is healthy and ready to handle live requests, we switch the traffic from old Pod replicas to the new replicas. This activity in Kubernetes
+    can be done by updating the Service selector to match the new containers (tagged as green). As demonstrated in Figure 3-3, once the green contain‐ ers handle all the traffic, the blue containers
+    can be deleted and the resources freed for future Blue-Green deployments.
+
+
+![](./static/blue_green_deployment.png)
+
+    ++ drawbacks of this method is there can be significant complications with long-running processes and database state drifts during the transitions.
+
+    Canary Release
+
+    Canary release is a way to softly deploy a new version of an application into produc‐ tion by replacing only a small subset of old instances with new ones. This technique
+    reduces the risk of introducing a new version into production by letting only some of the consumers reach the updated version. When we are happy with the new version of our
+    service and how it performed with a small sample of users, we replace all the old instances with the new version. Figure below shows a canary release in action.
+
+![](./static/canary_release.png)
+
+    In Kubernetes, this technique can be implemented by creating a new ReplicaSet for the new container version (preferably using a Deployment) with a small
+    replica count that can be used as the Canary instance. At this stage, the Service should direct some of the consumers to the updated Pod instances.
+    Once we are confident that every‐ thing with new ReplicaSet works as expected, we scale a new ReplicaSet up, and the old ReplicaSet down to zero. In a way,
+    we are performing a controlled and user-tested incremental rollout.
+
+![](./static/graphs_deploy_strategies.png)
 
 
