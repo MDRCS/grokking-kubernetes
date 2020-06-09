@@ -4273,4 +4273,39 @@
         # Delete PV & PVC
         kubectl delete -f https://k8spatterns.io/PredictableDemands/pv-and-pvc.yml
 
+    Resource limits
+        Let’s create now a real Deployment with resource limits
+
+        kubectl create -f https://k8spatterns.io/PredictableDemands/deployment.yml
+        This will use 200M as upper limit for our application. Since we are using Java 11 as JVM for our Java application, the JVM respects this boundary and allocates only a fraction of this as heap. You can easily check this with
+
+        # The 'pod' alias is explained in INSTALL.adoc
+        kubectl logs $(pod random-generator) | grep "=== "
+
+        i.k.examples.RandomGeneratorApplication  : === Max Heap Memory:  96 MB
+        i.k.examples.RandomGeneratorApplication  : === Used Heap Memory: 37 MB
+        i.k.examples.RandomGeneratorApplication  : === Free Memory:      13 MB
+        i.k.examples.RandomGeneratorApplication  : === Processors:       1
+        Let’s now try to change our limits and requests with smaller and larger values.
+
+        patch=$(cat <<EOT
+        [
+          {
+            "op": "replace",
+            "path": "/spec/template/spec/containers/0/resources/requests/memory",
+            "value": "30Mi"
+          },
+          {
+            "op": "replace",
+            "path": "/spec/template/spec/containers/0/resources/limits/memory",
+            "value": "30Mi"
+          }
+        ]
+        EOT
+        )
+        kubectl patch deploy random-generator --type=json -p $patch
+        If you check your Pods now with kubectl get pods and kubectl describe, do you see what you expect ? Also don’t forget the check the logs, too !
+
+
+
 
