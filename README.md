@@ -4853,3 +4853,71 @@
     Create a headless Service with the same Pod selector as a DaemonSet that can be used to retrieve multiple A records from DNS containing all Pod IPs and ports.
 
     https://kubernetes.io/docs/tasks/manage-daemon/update-daemon-set/
+
+    3- Singleton Service :
+    The Singleton Service pattern ensures only one instance of an application is active at a time and yet is highly available. This pattern can be implemented
+    from within the application, or delegated fully to Kubernetes.
+
+    Problem
+    However, in some cases only one instance of a service is allowed to run at a time. For example, if there is a periodically executed task in a service and
+    multiple instances of the same service, every instance will trigger the task at the scheduled intervals, lead‐ ing to duplicates rather than having only
+    one task fired as expected. Another example is a service that performs polling on specific resources (a filesystem or database) and we want to ensure only a
+    single instance and maybe even a single thread performs the polling and processing. A third case occurs when we have to consume messages from a messages
+    broker in order with a single-threaded consumer that is also a singleton service.
+
+    Solution
+    Running multiple replicas of the same Pod creates an active-active topology where all instances of a service are active. What we need is an active-passive
+    (or master-slave) topology where only one instance is active, and all the other instances are passive. Fundamentally, this can be achieved at two possible
+    levels: out-of-application and in- application locking.
+
+    The way to achieve this in Kubernetes is to start a Pod with one replica. This activity alone does not ensure the singleton Pod is highly available. What
+    we have to do is also back the Pod with a controller such as a ReplicaSet that turns the singleton Pod into a highly available singleton. This topology
+    is not exactly active-passive (there is no pas‐ sive instance), but it has the same effect, as Kubernetes ensures that one instance of the Pod is running
+    at all times. In addition, the single Pod instance is highly available,
+
+    The most popular corner case here occurs when a node with a controller-managed Pod becomes unhealthy and disconnects from the rest of the Kubernetes cluster.
+    In this scenario, a ReplicaSet controller starts another Pod instance on a healthy node (assuming there is enough capacity), without ensuring the Pod on the
+    disconnected node is shut down. Similarly, when changing the number of replicas or relocating Pods to different nodes, the number of Pods can temporarily go
+    above the desired number. That temporary increase is done with the intention of ensuring high availa‐ bility and avoiding disruption, as needed for stateless
+    and scalable applications.
+
+    Headless service
+    However, such a Service is still useful because a headless Service with selectors creates endpoint records in the API Server and generates DNS A records for
+    the matching Pod(s). With that, a DNS lookup for the Service does not return its virtual IP, but instead the IP address(es) of the backing Pod(s). That enables
+    direct access to the sin‐ gleton Pod via the Service DNS record, and without going through the Service virtual IP. For example, if we create a headless Service
+    with the namemy-singleton, we can use it as my-singleton.default.svc.cluster.local to access the Pod’s IP address directly.
+
+    In-Application Locking
+    In a distributed environment, one way to control the service instance count is through a distributed lock as shown in Figure 10-2. Whenever a service instance or
+    a component inside the instance is activated, it can try to acquire a lock, and if it suc‐ ceeds, the service becomes active. Any subsequent service instance
+    that fails to acquire the lock waits and continuously tries to get the lock in case the currently active service releases it.
+
+![](./static/high-available-onereplica.png)
+
+    Implementation of distributed lock
+    The typical implementation with ZooKeeper uses ephemeral nodes, which exist as long as there is a client session, and gets deleted as soon as the session ends.
+    The first service instance that starts up initiates a session in the ZooKeeper server and creates an ephemeral node to become active. All other service instances
+    from the same clus‐ ter become passive and have to wait for the ephemeral node to be released. This is how a ZooKeeper-based implementation makes sure there is
+    only one active service instance in the whole cluster, ensuring a active/passive failover behavior.
+
+    Pod Disruption Budget
+    Example 10-1. PodDisruptionBudget
+
+        apiVersion: policy/v1beta1
+        kind: PodDisruptionBudget
+        metadata:
+          name: random-generator-pdb
+        spec:
+          selector: (1)
+            matchLabels:
+            app: random-generator
+        minAvailable: 2 (2)
+
+    (1) Selector to count available Pods.
+    (2) At least two Pods have to be available. You can also specify a percentage, like 80%, to configure that only 20% of the matching Pods might be evicted.
+
+    In addition to .spec.minAvailable, there is also the option to use .spec.maxUna vailable, which specifies the number of Pods from that set that can be unavailable after the eviction.
+    But you cannot specify both fields, and PodDisruptionBudget typi‐ cally applies only to Pods managed by a controller. For Pods not managed by a con‐ troller (also referred to as bare or naked Pods),
+    other limitations around PodDisruptionBudget should be considered.
+
+
