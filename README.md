@@ -4405,3 +4405,275 @@
     is a fundamental prerequisite for automation of the container updates and lifecycle in a unified way, which in turn improves the system’s resilience and user experience. In practical terms,
     that means, as a very minimum, your containerized application must provide APIs for the differ‐ ent kinds of health checks (liveness and readiness).
 
+    kuberentes in the first docker container.
+
+    Managed Lifecycle
+    We saw that checking only the process status is not a good enough indication of the health of an application. That is why there are different APIs for monitoring the health of a container.
+    Similarly, using only the process model to run and stop a process is not good enough. Real-world applications require more fine-grained interactions and lifecycle management capabilities.
+    Some applications need help to warm up, and some applications need a gentle and clean shutdown procedure. For this and other use cases, some events, as shown in Figure below are emitted
+    by the platform that the container can listen to and react to if desired.
+
+![](./static/container_observability_options.png)
+
+    SIGTERM Signal
+    Whenever Kubernetes decides to shut down a container, whether that is because the Pod it belongs to is shutting down or simply a failed liveness probe causes the con‐ tainer to be restarted,
+    the container receives a SIGTERM signal. SIGTERM is a gentle poke for the container to shut down cleanly before Kubernetes sends a more abrupt SIGKILL signal. Once a SIGTERM signal has been received,
+    the application should shut down as quickly as possible. For some applications, this might be a quick termi‐ nation, and some other applications may have to complete their in-flight requests,
+    release open connections, and clean up temp files, which can take a slightly longer time. In all cases, reacting to SIGTERM is the right moment to shut down a container in a clean way.
+
+    SIGKILL Signal
+    If a container process has not shut down after a SIGTERM signal, it is shut down forcefully by the following SIGKILL signal. Kubernetes does not send the SIGKILL signal immediately but waits for a
+    grace period of 30 seconds by default after it has issued a SIGTERM signal. This grace period can be defined per Pod using the .spec.terminationGracePeriodSeconds field, but cannot be guaranteed as
+    it can be overridden while issuing commands to Kubernetes. The aim here should be to design and implement containerized applications to be ephemeral with quick startup and shutdown processes.
+
+    Poststart Hook
+    Using only process signals for managing lifecycles is somewhat limited. That is why there are additional lifecycle hooks such as postStart and preStop provided by Kubernetes. A Pod manifest containing
+    a postStart hook looks like the one in :
+
+    check -> ./Kubernetes_patterns/Managed_lifecycle/poststart-prestop.yaml
+
+    The postStart command is executed after a container is created, asynchronously with the primary container’s process. Even if many of the application initialization and warm-up logic can be implemented
+    as part of the container startup steps, post Start still covers some use cases. The postStart action is a blocking call, and the container status remains Waiting until the postStart handler completes,
+    which in turn keeps the Pod status in the Pending state. This nature of postStart can be used to delay the startup state of the container while giving time to the main container process to initialize.
+
+    Another use of postStart is to prevent a container from starting when the Pod does not fulfill certain preconditions. For example, when the postStart hook indicates an error by returning a nonzero exit
+    code, the main container process gets killed by Kubernetes.
+
+    postStart and preStop hook invocation mechanisms are similar to the Health Probes and support these handler types:
+    1- exec
+    2- httpGet
+    Executes an HTTP GET request against a port opened by one Pod container
+
+    !ATTENTION! You have to be very careful what critical logic you execute in the postStart hook as there are no guarantees for its execution. Since the hook is running in parallel with the container process,
+    it is possible that the hook may be executed before the con‐ tainer has started. Also, the hook is intended to have at-least once semantics, so the implementation has to take care of duplicate executions.
+    Another aspect to keep in mind is that the platform does not perform any retry attempts on failed HTTP requests that didn’t reach the handler.
+
+    Prestop Hook
+    The preStop hook is a blocking call sent to a container before it is terminated. It has the same semantics as the SIGTERM signal and should be used to initiate a graceful shutdown
+
+    !IMPORTANT! Understanding the stages and available hooks of containers and Pod lifecycles is cru‐ cial for creating applications that benefit from being managed by Kubernetes.
+
+    Automated Placement
+    Automated Placement is the core function of the Kubernetes scheduler for assigning new Pods to nodes satisfying container resource requests and honoring scheduling policies.
+    Example 6-2. An example scheduler policy
+    {
+        "kind" : "Policy",
+        "apiVersion" : "v1",
+         "predicates" : [ (1)
+                {"name" : "PodFitsHostPorts"},
+                {"name" : "PodFitsResources"},
+                {"name" : "NoDiskConflict"},
+                {"name" : "NoVolumeZoneConflict"},
+                {"name" : "MatchNodeSelector"},
+                {"name" : "HostName"}
+        ],
+        "priorities" :
+        [
+            {"name" : "LeastRequestedPriority", "weight" : 2}, (2)
+            {"name" : "BalancedResourceAllocation", "weight" : 1},
+            {"name" : "ServiceSpreadingPriority", "weight" : 2},
+            {"name" : "EqualPriority", "weight" : 1}
+        ]
+    }
+
+    (1) Predicates are rules that filter out unqualified nodes. For example, PodFitsHost‐ sPorts schedules Pods to request certain fixed host ports only on those nodes that have this port still available.
+    (2) Priorities are rules that sort available nodes according to preferences. For exam‐ ple, LeastRequestedPriority gives nodes with fewer requested resources a higher priority.
+
+    Consider that in addition to configuring the policies of the default scheduler, it is also possible to run multiple schedulers and allow Pods to specify which scheduler to place them.
+    You can start another scheduler instance that is configured differently by giving it a unique name. Then when defining a Pod, just add the field .spec.schedu lerName with the name of
+    your custom scheduler to the Pod specification and the Pod will be picked up by the custom scheduler only.
+
+    Scheduling Process
+    Pods get assigned to nodes with certain capacities based on placement policies. For completeness, Figure below visualizes at a high level how these elements get together and the main steps a
+    Pod goes through when being scheduled.
+
+![](./static/assignement_process.png)
+
+    1- As soon as a Pod is created that is not assigned to a node yet, it gets picked by the scheduler together with all the available nodes and the set of filtering and priority policies. In the first
+       stage, the scheduler applies the filtering policies and removes all nodes that do not qualify based on the Pod’s criteria. In the second stage, the remaining nodes get ordered by weight. In the
+       last stage the Pod gets a node assigned, which is the primary outcome of the scheduling process.
+
+    In most cases, it is better to let the scheduler do the Pod-to-node assignment and not micromanage the placement logic. However, on some occasions, you may want to force the assignment of a Pod to a
+    specific node or a group of nodes. This assignment can be done using a node selector. .spec.nodeSelector is Pod field and specifies a map of key-value pairs that must be present as labels on the node
+    for the node to be eligible to run the Pod. For example, say you want to force a Pod to run on a specific node where you have SSD storage or GPU acceleration hardware. With the Pod defi‐ nition in Example
+    that has nodeSelector matching disktype: ssd, only nodes that are labeled with disktype=ssd will be eligible to run the Pod.
+
+    Example 6-3. Node selector based on type of disk available
+
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: random-generator
+    spec:
+      containers:
+      - image: k8spatterns/random-generator:1.0
+        name: random-generator
+      nodeSelector:
+        disktype: ssd
+
+    Set of node labels a node must match to be considered to be the node of this Pod
+    In addition to specifying custom labels to your nodes, you can use some of the default labels that are present on every node. Every node has a unique kubernetes.io/host name label that can be used to place a
+    Pod on a node by its hostname. Other default labels that indicate the OS, architecture, and instance-type can be useful for place‐ ment too.
+
+    Pods with Affinity Node
+
+    Kubernetes supports many more flexible ways to configure the scheduling processes. One such a feature is node affinity, which is a generalization of the node selector approach described previously that allows
+    specifying rules as either required or pre‐ ferred. Required rules must be met for a Pod to be scheduled to a node, whereas pre‐ ferred rules only imply preference by increasing the weight for the matching nodes
+    without making them mandatory. Besides, the node affinity feature greatly expands the types of constraints you can express by making the language more expressive with operators such as In, NotIn, Exists, DoesNotExist,
+    Gt, or Lt. Example 6-4 demon‐ strates how node affinity is declared.
+
+    Example 6-4. Pod with node affinity
+
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: random-generator
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution: (1)
+            nodeSelectorTerms:
+            - matchExpressions: (2)
+              - key: numberCores
+                operator: Gt
+                values: [ "3" ]
+          preferredDuringSchedulingIgnoredDuringExecution: (3)
+          - weight: 1
+            preference:
+              matchFields: (4)
+              - key: metadata.name
+                operator: NotIn
+                values: [ "master" ]
+      containers:
+      - image: k8spatterns/random-generator:1.0
+        name: random-generator
+
+    (1) Hard requirement that the node must have more than three cores (indicated by a node label) to be considered in the scheduling process. The rule is not reevalu‐ ated during execution if the conditions on the node change.
+    (2) Match on labels.
+    (3) Soft requirements, which is a list of selectors with weights. For every node, the sum of all weights for matching selectors is calculated, and the highest-valued node is chosen, as long as it matches the hard requirement.
+    (4) Match on a field (specified as jsonpath). Note that only In and NotIn are allowed as operators, and only one value is allowed to be given in the list of values.
+
+    Pod Affinity and Antiaffinity
+    Node affinity is a more powerful way of scheduling and should be preferred when nodeSelector is not enough. This mechanism allows constraining which nodes a Pod can run based on label or field matching. It doesn’t allow
+    expressing dependencies among Pods to dictate where a Pod should be placed relative to other Pods. To express how Pods should be spread to achieve high availability, or be packed and co- located together to improve latency,
+    Pod affinity and antiaffinity can be used.
+
+    Node affinity works at node granularity, but Pod affinity is not limited to nodes and can express rules at multiple topology levels. Using the topologyKey field, and the matching labels, it is possible to enforce more
+    fine-grained rules, which combine rules on domains like node, rack, cloud provider zone, and region, as demonstrated
+
+    Example 6-5. Pod with Pod affinity
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: random-generator
+    spec:
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution: (1)
+          - labelSelector: (2)
+              matchLabels:
+                confidential: high
+            topologyKey: security-zone (3)
+        podAntiAffinity: (4)
+          preferredDuringSchedulingIgnoredDuringExecution: (5)
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  confidential: none
+              topologyKey: kubernetes.io/hostname
+      containers:
+      - image: k8spatterns/random-generator:1.0
+        name: random-generator
+
+    (1) Required rules for the Pod placement concerning other Pods running on the tar‐ get node.
+    (2) Label selector to find the Pods to be colocated with.
+    (3) The nodes on which Pods with labels confidential=high are running are sup‐ posed to carry a label security-zone.
+        The Pod defined here is scheduled to a node with the same label and value.
+    (4) Antiaffinity rules to find nodes where a Pod would not be placed.
+    (5) Rule describing that the Pod should not (but could) be placed on any node where a Pod with the label confidential=none is running.
+
+    +++ Similar to node affinity, there are hard and soft requirements for Pod affinity and antiaffinity, called requiredDuringSchedulingIgnoredDuringExecution
+        and prefer redDuringSchedulingIgnoredDuringExecution, respectively. Again, as with node affinity, there is the IgnoredDuringExecution suffix in the field name,
+        which exists for future extensibility reasons. At the moment, if the labels on the node change and affinity rules are no longer valid, the Pods continue running,1
+        but in the future run‐ time changes may also be taken into account.
+
+    Taints and Tolerations
+
+    ++ A more advanced feature that controls where Pods can be scheduled and are allowed to run is based on taints and tolerations. While node affinity is a property of Pods
+    that allows them to choose nodes, taints and tolerations are the opposite. They allow the nodes to control which Pods should or should not be scheduled on them.
+
+    A taint is added to a node by using kubectl: kubectl taint nodes master node- role.kubernetes.io/master="true":NoSchedule, which has the effect shown in Example 6-6.
+    A matching toleration is added to a Pod as shown in Example 6-7. Notice that the values for key and effect in the taints section of Example 6-6 and the tolerations:
+    section in Example 6-7 have the same values.
+
+    Example 6-6. Tainted node
+    apiVersion: v1
+    kind: Node
+    metadata:
+      name: master
+    spec:
+      taints: (1)
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/master
+
+    (1) Taint on a node’s spec to mark this node as not available for scheduling except when a Pod tolerates this taint
+
+    Example 6-7. Pod tolerating node taints
+        apiVersion: v1
+        kind: Pod
+        metadata:
+          name: random-generator
+        spec:
+          containers:
+          - image: k8spatterns/random-generator:1.0
+            name: random-generator
+          tolerations:
+          - key: node-role.kubernetes.io/master (1)
+            operator: Exists
+            effect: NoSchedule (2)
+
+    (1) Tolerate (i.e., consider for scheduling) nodes, which have a taint with key node- role.kubernetes.io/master. On production clusters,
+        this taint is set on the master node to prevent scheduling of Pods on the master. A toleration like this allows this Pod to be installed on the master nevertheless.
+    (2) Tolerate only when the taint specifies a NoSchedule effect. This field can be empty here, in which case the toleration applies to every effect.
+
+    +++ There are hard taints that prevent scheduling on a node (effect=NoSchedule), soft taints that try to avoid scheduling on a node (effect=PreferNoSchedule), and taints
+    that can evict already running Pods from a node (effect=NoExecute).
+
+    ++ Taints and tolerations allow for complex use cases like having dedicated nodes for an exclusive set of Pods, or force eviction of Pods from problematic
+       nodes by tainting those nodes.
+
+    +++ In Figure below, we can see node A has 4 GB of memory that cannot be utilized as there is no CPU left to place other containers. Creating containers with smaller
+        resource requirements may help improve this situation. Another solution is to use the Kuber‐ netes descheduler, which helps defragment nodes and improve their utilization.
+
+    Once a Pod is assigned to a node, the job of the scheduler is done, and it does not change the placement of the Pod unless the Pod is deleted and recreated without a node assignment.
+
+    Kubernetes Descheduler
+    All these are scenarios that can be addressed by the descheduler. The Kubernetes descheduler is an optional feature that typically is run as a Job whenever a cluster administrator decides
+    it is a good time to tidy up and defragment a cluster by rescheduling the Pods. The descheduler comes with some predefined policies that can be enabled and tuned or disabled. The policies
+    are passed as a file to the descheduler Pod, and currently, they are the following:
+
+    RemoveDuplicates
+    This strategy ensures that only a single Pod associated with a ReplicaSet or Deployment is running on a single node. If there are more Pods than one, these excess Pods are evicted. This strategy
+    is useful in scenarios where a node has become unhealthy, and the managing controllers started new Pods on other healthy nodes. When the unhealthy node is recovered and joins the cluster,
+    the number of running Pods is more than desired, and the descheduler can help bring the numbers back to the desired replicas count. Removing duplicates on nodes can also help with the spread
+    of Pods evenly on more nodes when schedul‐ ing policies and cluster topology have changed after the initial placement.
+
+    LowNodeUtilization
+    This strategy finds nodes that are underutilized and evicts Pods from other over- utilized nodes, hoping these Pods will be placed on the underutilized nodes, lead‐ ing to better
+    spread and use of resources. The underutilized nodes are identified as nodes with CPU, memory, or Pod count below the configured thresholds val‐ ues. Similarly, overutilized nodes
+    are those with values greater than the config‐ ured targetThresholds values. Any node between these values is appropriately utilized and not affected by this strategy.
+
+    RemovePodsViolatingInterPodAntiAffinity
+    This strategy evicts Pods violating interpod antiaffinity rules, which could hap‐ pen when the antiaffinity rules are added after the Pods have been placed on the nodes.
+    RemovePodsViolatingNodeAffinity
+    This strategy is for evicting Pods violating node affinity rules. Regardless of the policy used, the descheduler avoids evicting the following:
+
+    • Critical Pods that are marked with scheduler.alpha.kubernetes.io/critical- pod annotation.
+    • Pods not managed by a ReplicaSet, Deployment, or Job.
+    • Pods managed by a DaemonSet.
+    • Pods that have local storage.
+    • Pods with PodDisruptionBudget where eviction would violate its rules.
+    • Deschedule Pod itself (achieved by marking itself as a critical Pod).
+
+    Of course, all evictions respect Pods’ QoS levels by choosing Best-Efforts Pods first, then Burstable Pods, and finally Guaranteed Pods as candidates for eviction.
