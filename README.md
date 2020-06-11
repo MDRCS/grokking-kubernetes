@@ -4791,4 +4791,65 @@
     CronJob is a very specialized primitive, and it applies only when a unit of work has a temporal dimension. Even if CronJob is not
     a general-purpose primitive, it is an excellent example of how Kubernetes capabilities build on top of each other and sup‐ port noncloud-native use cases as well.
 
+    2- Daemon Service :
 
+    The concept of a daemon in software systems exists at many levels. At an operating system level, a daemon is a long-running,
+    self-recovering computer program that runs as a background process. In Unix, the names of daemons end in “d,” such as httpd,
+    named, and sshd. In other operating systems, alternative terms such as services-started tasks and ghost jobs are used.
+
+    Example 9-1. DaemonSet resource
+    apiVersion: extensions/v1beta1
+    kind: DaemonSet
+    metadata:
+      name: random-refresher
+    spec:
+      selector:
+        matchLabels:
+          app: random-refresher
+      template:
+        metadata:
+          labels:
+            app: random-refresher
+        spec:
+          nodeSelector: (1)
+            feature: hw-rng
+          containers:
+          - image: k8spatterns/random-generator:1.0
+            name: random-generator
+            command:
+            - sh
+            - -c
+            - >-
+              "while true; do
+              java -cp / RandomRunner /host_dev/random 100000;
+              sleep 30; done"
+            volumeMounts: (2)
+            - mountPath: /host_dev
+              name: devices
+          volumes:
+          - name: devices
+            hostPath: (3)
+                path: /dev
+
+    (1) Use only nodes with the label feature set to value hw-rng.
+    (2) DaemonSets often mount a portion of a node’s filesystem to perform maintenance actions.
+    (3) hostPath for accessing the node directories directly.
+
+    • By default, a DaemonSet places one Pod instance to every node. That can be con‐ trolled and limited to a subset of nodes by using the nodeSelector field.
+    • A Pod created by a DaemonSet already has nodeName specified. As a result, the DaemonSet doesn’t require the existence of the Kubernetes scheduler to run containers.
+      That also allows using a DaemonSet for running and managing the Kubernetes components.
+    • Pods created by a DaemonSet can run before the scheduler has started, which allows them to run before any other Pod is placed on a node.
+    • Since the scheduler is not used, the unschedulable field of a node is not respec‐ ted by the DaemonSet controller.
+    • Pods managed by a DaemonSet are supposed to run only on targeted nodes, and as a result, are treated with higher priority and differently by many controllers.
+      For example, the descheduler will avoid evicting such Pods, the cluster autoscaler will manage them separately, etc.
+
+
+    Typically a DaemonSet creates a single Pod on every node or subset of nodes. Given that, there are several ways for Pods managed by DaemonSets to be reached:
+
+    Service
+    Create a Service with the same Pod selector as a DaemonSet, and use the Service to reach a daemon Pod load-balanced to a random node.
+
+    DNS
+    Create a headless Service with the same Pod selector as a DaemonSet that can be used to retrieve multiple A records from DNS containing all Pod IPs and ports.
+
+    https://kubernetes.io/docs/tasks/manage-daemon/update-daemon-set/
