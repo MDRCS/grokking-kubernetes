@@ -1,0 +1,16 @@
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: random-generator
+spec:
+  # Every three minutes
+  schedule: "*/3 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - image: k8spatterns/random-generator:1.0
+            name: random-generator
+            command: [ "java", "-cp", "/", "RandomRunner", "/numbers.txt", "10000" ]
+          restartPolicy: OnFailure

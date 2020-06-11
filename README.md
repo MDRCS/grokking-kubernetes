@@ -4743,3 +4743,52 @@
     one Pod per work item is not justified.
     If you have an unlimited stream of work items to process, other controllers like Repli‐ caSet are the better choice for managing the Pods processing these work items.
 
+    Periodic Job
+    The Periodic Job pattern extends the Batch Job pattern by adding a time dimension and allowing the execution of a unit of work to be triggered by a temporal event.
+
+    Example 8-1. A CronJob resource
+    apiVersion: batch/v1beta1
+    kind: CronJob
+    metadata:
+      name: random-generator
+    spec:
+      # Every three minutes
+      schedule: "*/3 * * * *" (1)
+      jobTemplate:
+        spec:
+          template: (2)
+            spec:
+              containers:
+              - image: k8spatterns/random-generator:1.0
+                name: random-generator
+                command: [ "java", "-cp", "/", "RandomRunner", "/numbers.txt", "10000" ]
+              restartPolicy: OnFailure
+
+    (1) Cron specification for running every three minutes
+    (2) Job template that uses the same specification as a regular Job
+
+    Apart from the Job spec, a CronJob has additional fields to define its temporal aspects:
+
+    .spec.schedule
+    Crontab entry for specifying the Job’s schedule (e.g., 0 * * * * for running every hour).
+
+    .spec.startingDeadlineSeconds
+    Deadline (in seconds) for starting the Job if it misses its scheduled time. In some use cases,
+    a task is valid only if it executed within a certain timeframe and is use‐ less when executed late.
+    For example, if a Job is not executed in the desired time because of a lack of compute resources or other missing dependencies,
+    it might be better to skip an execution because the data it is supposed to process is obso‐ lete already.
+
+    .spec.concurrencyPolicy
+    Specifies how to manage concurrent executions of Jobs created by the same CronJob. The default behavior Allow creates new Job
+    instances even if the previ‐ ous Jobs have not completed yet. If that is not the desired behavior, it is possible to skip
+    the next run if the current one has not completed yet with Forbid or to cancel the currently running Job and start a new one with Replace.
+
+    .spec.suspend
+    Field suspending all subsequent executions without affecting already started executions.
+
+    .spec.successfulJobsHistoryLimit and .spec.failedJobsHistoryLimit
+    Fields specifying how many completed and failed Jobs should be kept for audit‐ ing purposes.
+    CronJob is a very specialized primitive, and it applies only when a unit of work has a temporal dimension. Even if CronJob is not
+    a general-purpose primitive, it is an excellent example of how Kubernetes capabilities build on top of each other and sup‐ port noncloud-native use cases as well.
+
+
