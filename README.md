@@ -4169,7 +4169,7 @@
 
 ![](./static/kub8_components.png)
 
-    + Foundational Patterns
+    + Part1 : Foundational Patterns
 
     1- Predictable Demands
 
@@ -4649,6 +4649,8 @@
     Once a Pod is assigned to a node, the job of the scheduler is done, and it does not change the placement of the Pod unless the Pod is deleted and recreated without a node assignment.
 
     Kubernetes Descheduler
+        https://github.com/kubernetes-sigs/descheduler
+
     All these are scenarios that can be addressed by the descheduler. The Kubernetes descheduler is an optional feature that typically is run as a Job whenever a cluster administrator decides
     it is a good time to tidy up and defragment a cluster by rescheduling the Pods. The descheduler comes with some predefined policies that can be enabled and tuned or disabled. The policies
     are passed as a file to the descheduler Pod, and currently, they are the following:
@@ -4677,3 +4679,67 @@
     • Deschedule Pod itself (achieved by marking itself as a critical Pod).
 
     Of course, all evictions respect Pods’ QoS levels by choosing Best-Efforts Pods first, then Burstable Pods, and finally Guaranteed Pods as candidates for eviction.
+
+    + Part 2 - Behavioral Patterns :
+
+    1- Batch Job :
+    Example 7-1. A Job specification
+
+    apiVersion: batch/v1
+    kind: Job
+    metadata:
+      name: random-generator
+    spec:
+      completions: 5 (1)
+      parallelism: 2 (2)
+      template:
+        metadata:
+          name: random-generator
+        spec:
+          restartPolicy: OnFailure (3)
+          containers:
+          - image: k8spatterns/random-generator:1.0
+            name: random-generator
+            command: [ "java", "-cp", "/", "RandomRunner", "/numbers.txt", "10000" ]
+
+    (1) Job should run five Pods to completion, which all must succeed.
+    (2) Two Pods can run in parallel.
+    (3) Specifying the restartPolicy is mandatory for a Job.
+
+    ++ One crucial difference between the Job and the ReplicaSet definition is
+       the .spec.tem plate.spec.restartPolicy. The default value for a ReplicaSet is Always,
+       which makes sense for long-running processes that must always be kept running.
+       The value Always is not allowed for a Job and the only possible options are either OnFailure or Never.
+
+    The two fields that play major roles in the behavior of a Job are:
+
+    - .spec.completions
+    Specifies how many Pods should run to complete a Job.
+
+    - .spec.parallelism
+    Specifies how many Pod replicas could run in parallel. Setting a high number does not guarantee a high level of
+    parallelism and the actual number of Pods may still be less (and in some corner cases, more) than the desired number
+    (e.g., due to throttling, resource quotas, not enough completions left, and other reasons). Setting this field to 0 effectively pauses the Job.
+
+![](./static/job-illust.png)
+
+    Based on these two parameters, there are the following types of Jobs:
+
+    1-  Single Pod Job
+    This type is selected when you leave out both .spec.completions and .spec.par allelism or set them to their default values of one. Such a Job starts only
+    one Pod and is completed as soon as the single Pod terminates successfully (with exit code 0).
+
+    2- Fixed completion count Jobs
+    When you specify .spec.completions with a number greater than one, this many Pods must succeed. Optionally, you can set .spec.parallelism, or leave it
+    at the default value of one. Such a Job is considered completed after the .spec.completions number of Pods has completed successfully. Example shows this
+    mode in action and is the best choice when we know the number of work items in advance, and the processing cost of a single work item justifies the use of a dedicated Pod.
+
+    3- Work queue Jobs
+    You have a work queue for parallel Jobs when you leave out .spec.completions and set .spec.parallelism to an integer greater than one. A work queue Job is considered
+    ompleted when at least one Pod has terminated successfully, and all other Pods have terminated too. This setup requires the Pods to coordinate among themselves and determine
+    what each one is working on so that they can finish in a coordinated fashion. For example, when a fixed but unknown number of work items is stored in a queue, parallel Pods
+    can pick these up one by one to work on them. The first Pod that detects that the queue is empty and exits with success indicates the completion of the Job. The Job controller
+    waits for all other Pods to terminate too. Since one Pod processes multiple work items, this Job type is an excellent choice for granular work items—when the overhead for
+    one Pod per work item is not justified.
+    If you have an unlimited stream of work items to process, other controllers like Repli‐ caSet are the better choice for managing the Pods processing these work items.
+

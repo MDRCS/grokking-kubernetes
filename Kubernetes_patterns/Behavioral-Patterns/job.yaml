@@ -1,0 +1,15 @@
+kind: Job
+metadata:
+  name: random-generator
+spec:
+  completions: 5
+  parallelism: 2
+  template:
+    metadata:
+      name: random-generator
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - image: k8spatterns/random-generator:1.0
+        name: random-generator
+        command: [ "java", "-cp", "/", "RandomRunner", "/numbers.txt", "10000" ]
