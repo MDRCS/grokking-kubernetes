@@ -4920,4 +4920,41 @@
     But you cannot specify both fields, and PodDisruptionBudget typi‐ cally applies only to Pods managed by a controller. For Pods not managed by a con‐ troller (also referred to as bare or naked Pods),
     other limitations around PodDisruptionBudget should be considered.
 
+    Stateful Service
+
+    Storage
+    While it is not always necessary, the majority of stateful applications store state and thus require per-instance-based dedicated persistent storage.
+    The way to request and associate persistent storage with a Pod in Kubernetes is through PVs and PVCs.
+
+    Note the asymmetric behavior here: scaling up a StatefulSet (increasing the replicas count) creates new Pods and associated PVCs. Moreover, scaling down deletes the Pods, but it does not delete any PVCs
+    (nor PVs), which means the PVs cannot be recycled or deleted, and Kubernetes cannot free the storage. This behavior is by design and driven by the presumption that the storage of stateful applications is
+    criti‐ cal and that an accidental scale-down should not cause data loss.
+
+    each Pod gets a DNS entry where clients can directly reach out to it in a predictable way. For example, if our random-generator Service belongs to the default namespace, we can reach our rg-0 Pod through
+    its fully qualified domain name: rg-0.random-generator.default.svc.clus ter.local, where the Pod’s name is prepended to the Service name. This mapping allows other members of the clustered application or
+    other clients to reach specific Pods if they wish to.
+
+![](./static/distributed-statefulSetapp-kub8.png)
+
+    Ordinality
+    To allow proper data synchronization during scale-up and -down, StatefulSet by default performs sequential startup and shutdown. That means Pods start from the first one (with index 0), and only when that
+    Pod has successfully started, is the next one scheduled (with index 1), and the sequence continues. During scaling down, the order reverses—first shutting down the Pod with the highest index, and only
+    when it has shut down successfully is the Pod with the next lower index stopped. This sequence continues until the Pod with index 0 is terminated.
+
+    Partitioned Updates
+    By using the default rolling update strategy, you can partition instances by speci‐ fying a .spec.updateStrategy.rollingUpdate.partition number. The param‐ eter (with a default value of 0) indicates
+    the ordinal at which the StatefulSet should be partitioned for updates. If the parameter is specified, all Pods with an ordinal index greater than or equal to the partition are updated while all Pods
+    with an ordinal less than that are not updated. That is true even if the Pods are deleted; Kubernetes recreates them at the previous version. This feature can enable partial updates to clustered stateful
+    applications (ensuring the quorum is preserved, for example), and then roll out the changes to the rest of the cluster by setting the partition back to 0.
+
+    Parallel Deployments
+    When we set .spec.podManagementPolicy to Parallel, the StatefulSet launches or terminates all Pods in parallel, and does not wait for Pods to become running and ready or completely terminated before moving
+    to the next one. If sequential processing is not a requirement for your stateful application, this option can speed up operational procedures.
+
+
++ Scaledown a statefulSet :
+
+![](./static/scaledown-1.png)
+![](./static/scaledown-2.png)
+
 
