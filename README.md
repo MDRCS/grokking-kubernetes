@@ -5236,4 +5236,43 @@
     people relying on defaults (either by convention or consciously) will always be surprised when a default value changes. We have to communicate the change, and the user of such an
     application probably has to modify the calling code as well.
 
+    Configuration Resource
+
+    Problem
+    One significant disadvantage of the EnvVar Configuration pattern is that it’s suitable for only a handful of variables and simple configurations. Another one is that because environment
+    variables can be defined in various places, it is often hard to find the definition of a variable. And even if you find it, you can’t be entirely sure it is not overridden in another location.
+    For example, environment variables defined within a Docker image can be replaced during runtime in a Kubernetes Deployment resource.
+    Often, it is better to keep all the configuration data in a single place and not scattered around in various resource definition files. But it does not make sense to put the con‐ tent of a
+    whole configuration file into an environment variable. So some extra indi‐ rection would allow more flexibility, which is what Kubernetes Configuration Resources offer.
+
+    Solution
+    Kubernetes provides dedicated Configuration Resources that are more flexible than pure environment variables. These are the ConfigMap and Secret objects for general- purpose and sensitive data, respectively.
+    We can use both in the same way, as both provide storage and management of key- value pairs. When we are describing ConfigMaps, the same can be applied most of the time to Secrets too. Besides the actual data
+    encoding (which is Base64 for Secrets), there is no technical difference for the use of ConfigMaps and Secrets.
+    Once a ConfigMap is created and holding data, we can use the keys of a ConfigMap in two ways:
+    • As a reference for environment variables, where the key is the name of the envi‐ ronment variable.
+    • As files that are mapped to a volume mounted in a Pod. The key is used as the filename.
+
+    Example 19-1. ConfigMap resource
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: random-generator-config
+        data:
+          PATTERN: Configuration Resource
+          application.properties: |
+            # Random Generator config
+            log.file=/tmp/generator.log
+            server.port=7070
+          EXTRA_OPTIONS: "high-secure,native"
+          SEED: "432576345"
+        ConfigMaps can be accessed as environment variables and as a mounted file. We recommend using uppercase keys in the ConfigMap to indicate an EnvVar usage and proper filenames
+        when used as mounted files.
+
+    We see here that a ConfigMap can also carry the content of complete configuration files, like the Spring Boot application.properties in this example. You can imagine that for a
+    nontrivial use case, this section could get quite large!
+
+    Example 19-2. Create a ConfigMap from a file
+    kubectl create cm spring-boot-config \ --from-literal=JAVA_OPTIONS=-Djava.security.egd=file:/dev/urandom \ --from-file=application.properties
+
 
