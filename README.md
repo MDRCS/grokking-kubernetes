@@ -5097,4 +5097,46 @@
     Modern Sidecar containers are small and consume minimal resources, but you have to decide whether it is worth running a separate process
     or whether it is better to merge it into the main container.
 
+    https://www.usenix.org/system/files/conference/hotcloud16/hotcloud16_burns.pdf
+    https://www.feval.ca/posts/tincan-phone/
+
+    2- Adapter Pattern
+
+    The Adapter pattern takes a heterogeneous containerized system and makes it con‐ form to a consistent, unified interface with a standardized
+    and normalized format that can be consumed by the outside world. The Adapter pattern inherits all its char‐ acteristics from the Sidecar,
+    but has the single purpose of providing adapted access to the application.
+
+    Problem
+    Today, it is common to see multiple teams using different technologies and creating distributed systems composed of heterogeneous compo‐ nents.
+    This heterogeneity can cause difficulties when all components have to be treated in a unified way by other systems. The Adapter pattern offers
+    a solution by hiding the complexity of a system and providing unified access to it.
+
+    Solution
+    The best way to illustrate this pattern is through an example. A major prerequisite for successfully running and supporting distributed systems
+    is providing detailed moni‐ toring and alerting. Moreover, if we have a distributed system composed of multiple services we want to monitor,
+    we may use an external monitoring tool to poll metrics from every service and record them.
+    However, services written in different languages may not have the same capabilities and may not expose metrics in the same format expected by
+    the monitoring tool. This diversity creates a challenge for monitoring such a heterogeneous application from a single monitoring solution that
+    expects a unified view of the whole system. With the Adapter pattern, it is possible to provide a unified monitoring interface by exporting
+    metrics from various application containers into one standard format and protocol.
+
++ In Figure 16-1, an Adapter container translates locally stored metrics information into the external format the monitoring server understands.
+
+![](./static/adapter-pattern.png)
+
+    ++ We could have one Adapter container that knows how to export Java-based metrics over HTTP, and another Adapter container in a different Pod
+       that exposes Python-based metrics over HTTP. For the monitoring tool, all metrics would be available over HTTP, and in a common normalized format.
+
+    For a concrete implementation of this pattern, let’s revisit our sample random genera‐ tor application and create the adapter shown in Figure 16-1. When appropriately configured,
+    it writes out a log file with the random-number generator, and includes the time it took to create the random number. We want to monitor this time with Prometheus. Unfortunately,
+    the log format doesn’t match the format Prometheus expects. Also, we need to offer this information over an HTTP endpoint so that a Prometheus server can scrape the value.
+    For this use case, an Adapter is a perfect fit: a Sidecar container starts a small HTTP server, and on every request, reads the custom log file and transforms it into a Prometheus-understandable format.
+    Example 16-1 shows a Deployment with such an Adapter. This configuration allows a decoupled Prometheus monitoring setup without the main application needing to know anything about Prometheus.
+
+![](./static/pod-adapter-1.png)
+![](./static/pod-adapter-2.png)
+
+    ++ Another use of this pattern is logging. Different containers may log information in different formats and level of detail. An Adapter can normalize that information,
+       clean it up, enrich it with contextual information by using the Self Awareness pattern, and then make it available for pickup by the centralized log aggregator.
+
 
