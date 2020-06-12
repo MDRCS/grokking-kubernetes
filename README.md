@@ -5050,3 +5050,51 @@
 
 ![](./static/service-discovery-mechanism.png)
 
+    4- Self Awareness
+
+    Some applications need to be self-aware and require information about themselves. The Self Awareness pattern describes
+    the Kubernetes Downward API that provides a simple mechanism for introspection and metadata injection to applications.
+
+    Problem
+    depending on the resources made available to the container, you may want to tune the application thread-pool size,
+    or change the garbage collection algo‐ rithm or memory allocation. You may want to use the Pod name and the hostname
+    while logging information, or while sending metrics to a central server. You may want to discover other Pods in the
+    same namespace with a specific label and join them into a clustered application. For these and other use cases,
+    Kubernetes provides the Downward API.
+
+    Solution
+    The Downward API allows passing metadata about the Pod to the containers and the cluster through envi‐ ronment variables
+    and files. These are the same mechanisms we used for passing application-related data from ConfigMaps and Secrets. But
+    in this case, the data is not created by us. Instead, we specify the keys that interests us, and Kubernetes populates the
+    values dynamically. Figure 13-1 gives an overview of how the Downward API injects resource and runtime information into interested Pods.
+
+![](./static/app-introspection.png)
+
+    + Part 3 - Structural Patterns :
+
+    1- SideCar
+
+    A Sidecar container extends and enhances the functionality of a preexisting container without changing it. This pattern is one of the
+    fundamental container patterns that allows single-purpose containers to cooperate closely together.
+
+    Problem
+    The Sidecar pattern describes this kind of collaboration where a container enhances the functionality of another preexisting container.
+
+    check ./Kubernetes_patterns/Structural-Patterns/sidecar-pattern/webapp.yaml
+
+    This example shows how the Git synchronizer enhances the HTTP server’s behavior with content to serve and keeps it synchronized.
+    We could also say that both contain‐ ers collaborate and are equally important, but in a Sidecar pattern, there is a main container
+    and a helper container that enhances the collective behavior. Typically, the main container is the first one listed in the containers
+    list, and it represents the default container (e.g., when we run the command: kubectl exec).
+
+    This simple pattern, illustrated in Figure 15-1, allows runtime collaboration of con‐ tainers, and at the same time, enables separation
+    of concerns for both containers, which might be owned by separate teams, using different programming languages, with different release
+    cycles, etc. It also promotes replaceability and reuse of contain‐ ers as the HTTP server, and the Git synchronizer can be reused in
+    other applications and different configuration either as a single container in a Pod or again in collabora‐ tion with other containers.
+
+![](./static/sidecar-pattern.png)
+
+    Modern Sidecar containers are small and consume minimal resources, but you have to decide whether it is worth running a separate process
+    or whether it is better to merge it into the main container.
+
+
