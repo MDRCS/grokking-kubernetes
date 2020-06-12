@@ -4958,3 +4958,95 @@
 ![](./static/scaledown-2.png)
 
 
+    3- Service Discovery
+
+    The Service Discovery pattern provides a stable endpoint at which clients of a service can access the instances providing the service. For this purpose, Kubernetes provides multiple mechanisms, depending on
+    whether the service consumers and producers are located on or off the cluster.
+
+
+![](./static/old_service_discovery.png)
+
+
+    The essential points to remember here are that once a Service is created, it gets a clus terIP assigned that is accessible only from within the Kubernetes cluster (hence the name), and that IP
+    remains unchanged as long as the Service definition exists. How‐ ever, how can other applications within the cluster figure out what this dynamically allocated clusterIP is? There are two ways:
+
+    Discovery through environment variables
+    When Kubernetes starts a Pod, its environment variables get populated with the details of all Services that exist up to that moment. For example, our random- generator Service listening on port
+    80 gets injected into any newly starting Pod, as the environment variables shown in Example below demonstrate. The applica‐ tion running that Pod would know the name of the Service it needs to
+    consume, and can be coded to read these environment variables. This lookup is a simple mechanism that can be used from applications written in any language,
+    and is also easy to emulate outside the Kubernetes cluster for development and testing purposes. The main issue with this mechanism is the temporal dependency on Service creation.
+    Since environment variables cannot be injected into already running Pods, the Service coordinates are available only for Pods started after the Service is created in Kubernetes.
+    That requires the Service to be defined before starting the Pods that depend on the Service—or if this is not the case, the Pods needs to be restarted.
+
+    Example 12-2. Service-related environment variables set automatically in Pod
+    RANDOM_GENERATOR_SERVICE_HOST=10.109.72.32
+    RANDOM_GENERATOR_SERVICE_PORT=8080
+
+    Discovery through DNS lookup
+    Kubernetes runs a DNS server that all the Pods are automatically configured to use. Moreover, when a new Service is created, it automatically gets a new DNS entry that all Pods can start using.
+    Assuming a client knows the name of the Ser‐ vice it wants to access, it can reach the Service by a fully qualified domain name (FQDN) such as random-generator.default.svc.cluster.local. Here,
+    random-generator is the name of the Service, default is the name of the name‐ space, svc indicates it is a Service resource, and cluster.local is the cluster- specific suffix. We can omit the
+    cluster suffix if desired, and the namespace as well when accessing the Service from the same namespace.
+
+    The DNS discovery mechanism doesn’t suffer from the drawbacks of the environment-variable-based mechanism, as the DNS server allows lookup of all Services to all Pods as soon as a Service is
+    defined. However, you may still need to use the environment variables to look up the port number to use if it is a non‐ standard one or unknown by the service consumer.
+
+    Here are some other high-level characteristics of the Service with type: ClusterIP that other types build upon:
+
+    Multiple ports
+    A single Service definition can support multiple source and target ports. For example, if your Pod supports both HTTP on port 8080 and HTTPS on port 8443, there is no need to define two Services.
+    A single Service can expose both ports on 80 and 443, for example.
+
+    Session affinity
+    When there is a new request, the Service picks a Pod randomly to connect to by default. That can be changed with sessionAffinity: ClientIP, which makes all requests originating from the same client
+    IP stick to the same Pod. Remember that Kubernetes Services performs L4 transport layer load balancing, and it cannot look into the network packets and perform application-level load balancing such
+    as HTTP cookie-based session affinity.
+
+![](./static/manual-service-discovery.png)
+
+    In this category of manual destination configuration, there is one more type of Ser‐ vice, as shown in Example 12-5.
+    Example 12-5. Service with an external destination
+
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: database-service
+        spec:
+          type: ExternalName
+          externalName: my.database.example.com
+          ports:
+          - port: 80
+
+    This Service definition does not have a selector either, but its type is ExternalName. That is an important
+    difference from an implementation point of view. This Service definition maps to the content pointed by externalName using DNS only.
+    It is a way of creating an alias for an external endpoint using DNS CNAME rather than going through the proxy with an IP address.
+    But fundamentally, it is another way of provid‐ ing a Kubernetes abstraction for endpoints located outside of the cluster.
+
+    Service Discovery from Outside the Cluster
+    The service discovery mechanisms discussed so far in this chapter all use a virtual IP address that points to Pods or external endpoints,
+    and the virtual IP address itself is accessible only from within the Kubernetes cluster. However, a Kubernetes cluster doesn’t run disconnected
+    from the rest of the world, and in addition to connecting to external resources from Pods, very often the opposite is also required—external
+    applications wanting to reach to endpoints provided by the Pods. Let’s see how to make Pods accessible for clients living outside the cluster.
+
+    The first method to create a Service and expose it outside of the cluster is through type: NodePort.
+
+    Example 12-6. Service with type NodePort
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: random-generator
+    spec:
+      type: NodePort (1)
+      selector:
+        app: random-generator
+      ports:
+      - port: 80
+        targetPort: 8080
+        nodePort: 30036 (2)
+        protocol: TCP
+
+    (1) Open port on all nodes.
+    (2) Specify a fixed port (which needs to be available) or leave this out to get a ran‐ domly selected port assigned.
+
+![](./static/service-discovery-mechanism.png)
+
