@@ -5140,3 +5140,58 @@
        clean it up, enrich it with contextual information by using the Self Awareness pattern, and then make it available for pickup by the centralized log aggregator.
 
 
+    3- Ambassador Pattern :
+
+    - the Ambassador pattern can act as a proxy and decouple the main Pod from directly accessing external dependencies.
+
+    Problem
+    Consuming the external service may require a special service discovery library that we do not want to put in our container.
+    Or we may want to swap different kinds of services by using different kinds of service discovery libraries and methods.
+    This technique of abstracting and isolating the logic for accessing other services in the out‐ side world is the goal of this Ambassador pattern.
+
+    Figures 17-1 and 17-2 show how an Ambassador Pod can decouple access to a key-value store by connecting to an Ambassador con‐ tainer
+    listening on a local port. In Figure 17-1, we see how data access can be delega‐ ted to a fully distributed remote store like Etcd.
+
+![](./static/amabassador-etcd-cache.png)
+![](./static/amabassador-memcached.png)
+
+    For development purposes, this Ambassador container can be easily exchanged with a locally running in-memory key-value store like memcached (as shown in Figure 17-2).
+
+    Example 17-1 shows an Ambassador that runs parallel to a REST service. Before returning its response, the REST service logs the generated
+    data by sending it to a fixed URL: http://localhost:9009. The Ambassador process listens in on this port and processes the data.
+
+    Example 17-1. Ambassador processing log output
+        apiVersion: v1
+        kind: Pod
+        metadata:
+          name: random-generator
+          labels:
+            app: random-generator
+        spec:
+          containers:
+          - image: k8spatterns/random-generator:1.0
+            name: main
+            env:
+            - name: LOG_URL
+              value: http://localhost:9009
+            ports:
+            - containerPort: 8080
+              protocol: TCP
+          - image: k8spatterns/random-generator-log-ambassador
+            name: ambassador
+        Main application container providing a REST service for generating random numbers
+        Connection URL for communicating with the Ambassador via localhost Ambassador running in parallel and listening on port 9009 (which is not exposed
+        to the outside of the Pod)
+
+    + Multi-container design patterns :
+
+    Sidecar pattern
+    An extra container in your pod to enhance or extend the functionality of the main container.
+
+    Ambassador pattern
+    A container that proxy the network connection to the main container.
+
+    Adapter pattern
+    A container that transform output of the main container.
+
+
