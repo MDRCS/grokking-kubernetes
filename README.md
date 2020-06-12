@@ -5194,4 +5194,46 @@
     Adapter pattern
     A container that transform output of the main container.
 
+    + Part 4 - Configuration Patterns :
+
+    - EnvVar Configuration :
+
+    Problem
+    Every nontrivial application needs some configuration for accessing data sources, external services, or production-level tuning. And we knew well before
+    The Twelve- Factor App manifesto that it is a bad thing to hardcode configurations within the application. Instead, the configuration should be externalized
+    so that we can change it even after the application has been built.
+
+    For Docker images, environment variables can be defined directly in Dockerfiles with the ENV directive. You can define them line by line or all in a single line, as shown in Example 18-1.
+    Example 18-1. Example Dockerfile with environment variables
+    FROM openjdk:11
+    ENV PATTERN "EnvVar Configuration"
+    ENV LOG_FILE "/tmp/random.log"
+    ENV SEED "1349093094"
+    # Alternatively:
+    ENV PATTERN="EnvVar Configuration" LOG_FILE=/tmp/random.log SEED=1349093094
+    ...
+    Then a Java application running in such a container can easily access the variables with a call to the Java standard library, as shown in Example 18-2.
+    Example 18-2. Reading environment variables in Java
+    public Random initRandom() {
+        long seed = Long.parseLong(System.getenv("SEED"));
+        return new Random(seed);
+    }
+
+    Directly running such an image will use the default hardcoded values. But in most cases, you want to override these parameters from outside the image.
+    When running such an image directly with Docker, environment variables can be set from the command line by calling Docker, as in Example 18-3.
+    Example 18-3. Set environment variables when starting a Docker container
+    docker run -e PATTERN="EnvVarConfiguration" \
+               -e LOG_FILE="/tmp/random.log" \
+               -e SEED="147110834325" \
+               k8spatterns/random-generator:1.0
+
+    For Kubernetes, these types of environment variables can be set directly in the Pod specification of a controller like Deployment or ReplicaSet (as in Example 18-4).
+
+    About Default Values
+    Default values make life easier, as they take away the burden of selecting a value for a configuration parameter you might not even know exists. They also play a significant role
+    in the convention over configuration paradigm. However, defaults are not always a good idea. Sometimes they might even be an antipattern for an evolving application.
+    This is because changing default values retrospectively is a difficult task. First, chang‐ ing default values means replacing them within the code, which requires a rebuild. Second,
+    people relying on defaults (either by convention or consciously) will always be surprised when a default value changes. We have to communicate the change, and the user of such an
+    application probably has to modify the calling code as well.
+
 
