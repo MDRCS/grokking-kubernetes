@@ -5275,4 +5275,37 @@
     Example 19-2. Create a ConfigMap from a file
     kubectl create cm spring-boot-config \ --from-literal=JAVA_OPTIONS=-Djava.security.egd=file:/dev/urandom \ --from-file=application.properties
 
+    + Part 5 - Advanced Patterns :
+
+    - Controller :
+
+    Problem
+    You already have seen that Kubernetes is a sophisticated and comprehensive platform that provides many features out of the box. However, it is a general-purpose orches‐ tration
+    platform that does not cover all application use cases. Luckily, it provides nat‐ ural extension points where specific use cases can be implemented elegantly on top of proven
+    Kubernetes building blocks
+
+    The main question that arises here is about how to extend Kubernetes without chang‐ ing and breaking it, and how to use its capabilities for custom use cases.
+
+    By design, Kubernetes is based on a declarative resource-centric API. What exactly do we mean by declarative? As opposed to an imperative approach, a declarative approach does
+    not tell Kubernetes how it should act, but instead describes how the target state should look. For example, when we scale up a Deployment, we do not actively create new Pods by
+    telling Kubernetes to “create a new Pod.” Instead, we change the Deployment resource’s replicas property via the Kubernetes API to the desired number.
+
+    How can we now hook into this reconciliation process without modifying Kubernetes code and create a controller customized for our specific needs?
+
+    A common characteristic of controllers is that they are reactive and react to events in the system to perform their specific actions. At a high level, this reconciliation process consists of the following main steps:
+
+    Observe
+    Discover the actual state by watching for events issued by Kubernetes when an observed resource changes.
+
+    Analyze
+    Determine the differences from the desired state.
+
+    Act
+    Perform operations to drive the actual to the desired state.
+
+    For example, the ReplicaSet controller watches for ReplicaSet resource changes, ana‐ lyzes how many Pods need to be running, and acts by submitting Pod definitions to the API Server. Kubernetes’ backend is then
+    responsible for starting up the requested Pod on a node.
+
+![](./static/controllers_change_cycle.png)
+
 
