@@ -5308,4 +5308,151 @@
 
 ![](./static/controllers_change_cycle.png)
 
+    + Elastic Scale :
 
+    The Elastic Scale pattern covers application scaling in multiple dimensions: horizontal scaling by adapting the number of Pod replicas, vertical scaling by adapting resource requirements for Pods, and scaling the cluster itself by changing
+    the number of clus‐ ter nodes. While all of these actions can be performed manually, in this chapter we explore how Kubernetes can perform scaling based on load automatically.
+
+    1- Horizontal Pod Autoscaling
+
+    Example 24-3. Create HPA definition on the command line
+    kubectl autoscale deployment random-generator --cpu-percent=50 --min=1 --max=5 The preceding command will create the HPA definition shown in Example 24-4.
+    Example 24-4. HPA definition
+
+        apiVersion: autoscaling/v2beta2
+        kind: HorizontalPodAutoscaler
+        metadata:
+          name: random-generator
+        spec:
+          minReplicas: 1 (1)
+          maxReplicas: 5 (2)
+          scaleTargetRef: (3)
+            apiVersion: extensions/v1beta1
+            kind: Deployment
+            name: random-generator
+          metrics:
+          - resource:
+              name: cpu
+              target:
+                averageUtilization: 50 (4)
+                type: Utilization
+            type: Resource
+
+        (1) Minimum number of Pods that should always run
+        (2) Maximum number of Pods until the HPA can scale up
+        (3) Reference to the object that should be associated with this HPA
+        (4) Desired CPU usage as a percentage of the Pods, requested CPU resource. For example,
+            when the Pods have a .spec.resources.requests.cpu of 200m, a scale-up happens when on average more
+            than 100m CPU (= 50%) is utilized.
+
+    Now, let’s see how an HPA can replace a human operator to ensure autoscaling. At a high level, the HPA controller performs the following steps continuously:
+    1. Retrieves metrics about the Pods that are subject to scaling according to the HPA definition. Metrics are not read directly from the Pods but from the Kubernetes Metrics APIs that serve aggregated metrics (and even custom and external met‐ rics if configured to do so). Pod-level resource metrics are obtained from the Metrics API, and all other metrics are retrieved from the Custom Metrics API of Kubernetes.
+    2. Calculates the required number of replicas based on the current metric value and targeting the desired metric value. Here is a simplified version of the formula:
+
+![](./static/formula.png)
+
+    desiredReplicas =   currentReplicas × currentMetricValue desiredMetricValue
+    For example, if there is a single Pod with a current CPU usage metric value of 90% of the specified CPU resource request value,1 and the desired value is 50%, the number
+    of replicas will be doubled, as   1 × 90     = 2. The actual implementation is more com‐ 50
+    plicated as it has to consider multiple running Pod instances, cover multiple metric types, and account for many corner cases and fluctuating values as well. If multiple
+
+    2- Verticla Pod Autoscaling
+    On a cluster with VPA and the metrics server installed, we can use a VPA definition to demonstrate vertical autoscaling of Pods, as in Example 24-5.
+
+        Example 24-5. VPA
+        apiVersion: poc.autoscaling.k8s.io/v1alpha1
+        kind: VerticalPodAutoscaler
+        metadata:
+          name: random-generator-vpa
+        spec:
+          selector:
+            matchLabels:
+              app: random-generator
+          updatePolicy:
+        updateMode: "Off"
+
+    Label selector to identify the Pods to manage
+    The update policy for how VPA will apply changes
+    A VPA definition has the following main parts:
+
+    Label selector
+    Specifies what to scale by identifying the Pods it should handle.
+
+    Update policy
+    Controls how VPA applies changes. The Initial mode allows assigning resource requests only during Pod creation time but not later. The default Auto mode allows
+    resource assignment to Pods at creation time, but additionally, it can update Pods during their lifetimes, by evicting and rescheduling the Pod. The value Off
+    disables automatic changes to Pods, but allows suggesting resource val‐ ues. This is a kind of dry run for discovering the right size of a container,
+    but without applying it directly.
+
+    In our example we chose .spec.updatePolicy.updateMode equals Off, but there are two other options to choose from, each with a different level of potential disruption on the scaled Pods.
+    Let’s see how different values for updateMode work, starting from nondisruptive to a more disruptive order:
+
+    + updateMode: Off
+    The VPA recommender gathers Pod metrics and events and then produces rec‐ ommendations. The VPA recommendations are always stored in the status sec‐ tion of the VPA resource.
+    However, this is how far the Off mode goes. It analyzes and produces recommendations, but it does not apply them to the Pods. This mode is useful for getting insight on the Pod
+    resource consumption without introducing any changes and causing disruption. That decision is left for the user to make if desired.
+
+    + updateMode: Initial
+    In this mode, the VPA goes one step further. In addition to the activities per‐ formed by the recommender component, it also activates the VPA admission plugin, which applies the recommendations to newly created Pods only.
+    For example, if a Pod is scaled manually through an HPA, updated by a Deployment, or evicted and restarted for whatever reason, the Pod’s resource request values are updated by the VPA Admission Controller.
+    This controller is a mutating admission plugin that overrides the requests of new Pods matching the VPA label selector. This mode does not restart a running Pod, but it is still partially disruptive because it changes the resource
+    request of newly created Pods. This in turn can affect where a new Pod is scheduled. What’s more, it is possible that after applying the recommended resource requests, the Pod is scheduled to a different node,
+    which can have unexpected consequences. Or worse, the Pod might not be scheduled to any node if there is not enough capacity on the cluster.
+
+    + updateMode: Auto
+    In addition to the recommendation creation and its application for newly created Pods as described previously, in this mode the VPA also activates its updated component. This component evicts running Pods
+    matching its label selector. After the eviction, the Pods get recreated by the VPA admission plugin compo‐ nent, which updates their resource requests. So this approach is the most disrup‐ tive as it restarts
+    all Pods to forcefully apply the recommendations and can lead to unexpected scheduling issues as described earlier.
+
+
+    3- Cluster Autoscaling
+    CA is a Kubernetes addon that has to be turned on and configured with a minimum and maximum number of nodes. It can function only when the Kubernetes cluster is running on a cloud-computing infrastructure where
+    nodes can be provisioned and decommissioned on demand and that has support for Kubernetes CA, such as AWS, Microsoft Azure, or Google Compute Engine.
+
+    A CA performs primarily two operations: add new nodes to a cluster or remove nodes from a cluster. Let’s see how these actions are performed:
+    Adding a new node (scale-up)
+    If you have an application with a variable load (busy times during the day, week‐ end, or holiday season, and much less load during other times), you need varying capacity to meet these demands.
+    You could buy fixed capacity from a cloud pro‐ vider to cover the peak times, but paying for it during less busy periods reduces the benefits of cloud computing. This is where CA becomes truly useful.
+    When a Pod is scaled horizontally or vertically, either manually or through HPA or VPA, the replicas have to be assigned to nodes with enough capacity to satisfy the requested CPU and memory.
+    If there is no node in the cluster with enough capacity to satisfy all of the Pod’s requirements, the Pod is marked as unschedula‐ ble and remains in the waiting state until such a node is found.
+    CA monitors for such Pods to see whether adding a new node would satisfy the needs of the Pods.
+
+    If the answer is yes, it resizes the cluster and accommodates the waiting Pods.
+
+    CA cannot expand the cluster by a random node—it has to choose a node from the available node groups the cluster is running on. It assumes that all the machines in a node group have the same capacity and the same
+    labels, and that they run the same Pods specified by local manifest files or DaemonSets. This assumption is necessary for CA to estimate how much extra Pod capacity a new node will add to the cluster.
+
+    Removing a node (scale-down)
+    Scaling down Pods or nodes without service disruption is always more involved and requires many checks. CA performs scale-down if there is no need to scale up and a node is identified as unneeded.
+    A node is qualified for scale-down if it satisfies the following main conditions:
+
+    • More than half of its capacity is unused—that is, the sum of all requested CPU and memory of all Pods on the node is less than 50% of the node allo‐ catable resource capacity.
+    • All movable Pods on the node (Pods that are not run locally by manifest files or Pods created by DaemonSets) can be placed on other nodes. To prove that, CA performs a scheduling simulation and identifies
+      the future location of every Pod that would be evicted. The final location of the Pods still is determined by the scheduler and can be different, but the simulation ensures there is spare capacity for the Pods.
+    • There are no other reasons to prevent node deletion, such as a node being excluded from scaling down through annotations.
+    • There are no Pods that cannot be moved, such as Pods with PodDisruption‐ Budget that cannot be satisfied, Pods with local storage, Pods with annota‐ tions preventing eviction, Pods created without a controller,
+      or system Pods.
+
+    All of these checks are performed to ensure no Pod is deleted that cannot be started on a different node. If all of the preceding conditions are true for a while (the default is 10 minutes), the node qualifies for deletion.
+    The node is deleted by marking it as unschedulable and moving all Pods from it to other nodes.
+
+![](./static/cluster_autoscaler.png)
+
+    As you probably figured out by now, scaling Pods and nodes are decoupled but com‐ plementary procedures. An HPA or VPA can analyze usage metrics, events, and scale Pods. If the cluster capacity is insufficient, the CA kicks
+    in and increases the capacity. The CA is also helpful when there are irregularities in the cluster load due to batch Jobs, recurring tasks, continuous integration tests, or other peak tasks that require a temporary increase
+    in the capacity. It can increase and reduce capacity and provide significant savings on cloud infrastructure costs.
+
+    Scaling Levels
+    In this chapter, we explored various techniques for scaling deployed workloads to meet their changing resource needs. While a human operator can manually perform most of the activities listed here, that doesn’t align with the cloud-native mindset.
+    In order to enable large-scale distributed system management, the automation of repeti‐ tive activities is a must. The preferred approach is to automate scaling and enable human operators to focus on tasks that a Kubernetes operator cannot automate yet.
+
+![](./static/scaling-levels.png)
+
+    Application Tuning
+    At the most granular level, there is an application tuning technique we didn’t cover in this chapter, as it is not a Kubernetes-related activity. However, the very first action you can take is to tune the application running
+    in the container to best use allocated resources. This activity is not performed every time a service is scaled, but it must be performed initially before hitting production. For example, for Java runtimes, that is right-sizing
+    thread pools for best use of the available CPU shares the container is get‐ ting. Then tuning the different memory regions such as heap, nonheap, and thread stack sizes. Adjusting these values is typically performed through configuration
+    changes rather than code changes.
+
+    - For more check the link below :
+    https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale-walkthrough/
